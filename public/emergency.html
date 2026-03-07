@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Emergency Roadside &amp; Onsite Truck Repair | Alex Road Service — Keasbey, NJ</title>
+  <meta name="description" content="Alex Road Service — commercial truck roadside and onsite repair in Woodbridge, NJ. Air systems, brakes, jump starts, hydraulics. Call (732) 938-0713.">
+  <link rel="canonical" href="https://alexroadservice.com/emergency">
+  <link rel="stylesheet" href="/css/styles.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+
+  <style>
+    .emerg-hero {
+      background: #0f1111;
+      padding: 80px 0;
+      position: relative;
+      overflow: hidden;
+      min-height: 520px;
+      display: flex;
+      align-items: center;
+    }
+    .emerg-hero::before {
+      content: '';
+      position: absolute; inset: 0;
+      background: repeating-linear-gradient(
+        -55deg, rgba(229,31,43,.06) 0px, rgba(229,31,43,.06) 1px, transparent 1px, transparent 40px
+      );
+    }
+    .emerg-hero__stripe {
+      position: absolute; left: 0; top: 0; bottom: 0; width: 6px;
+      background: var(--red);
+    }
+    .emerg-hero__inner { position: relative; z-index: 1; display: grid; grid-template-columns: 1fr auto; gap: 48px; align-items: center; }
+    .emerg-hero__title { font-family: var(--font-head); font-size: clamp(3rem, 8vw, 6rem); color: var(--white); line-height: 0.95; margin-bottom: 16px; }
+    .emerg-hero__title em { color: var(--red); font-style: normal; }
+    .emerg-hero__sub { color: rgba(255,255,255,.65); font-size: 1.1rem; max-width: 480px; margin-bottom: 36px; line-height: 1.7; }
+    .emerg-call-pill { background: var(--red); color: var(--white); display: inline-flex; align-items: center; gap: 12px; padding: 6px 6px 6px 24px; border-radius: var(--r-chip); font-family: var(--font-head); font-size: 1.4rem; letter-spacing: .02em; text-decoration: none; transition: background .2s; }
+    .emerg-call-pill:hover { background: var(--dark-red); }
+    .emerg-call-pill__icon { width: 44px; height: 44px; background: rgba(0,0,0,.2); border-radius: var(--r-chip); display: flex; align-items: center; justify-content: center; font-size: 1rem; }
+    @media (max-width: 768px) {
+      .emerg-hero__inner { grid-template-columns: 1fr; }
+      .call-block-side { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ═══ EMERGENCY HERO ═══ -->
+  <section class="emerg-hero">
+    <div class="emerg-hero__stripe"></div>
+    <div class="container">
+      <div class="emerg-hero__inner">
+        <div>
+          <div style="display:inline-flex;align-items:center;gap:8px;background:rgba(229,31,43,.15);border:1px solid rgba(229,31,43,.35);color:var(--red);font-size:.72rem;font-weight:700;letter-spacing:.12em;text-transform:uppercase;padding:7px 14px;border-radius:999px;margin-bottom:24px">
+            <span style="width:8px;height:8px;background:var(--red);border-radius:50%;animation:blink 1.6s infinite;display:inline-block"></span>
+            DISPATCHING NOW — 24/7
+          </div>
+          <h1 class="emerg-hero__title">
+            EMERGENCY<br><em>ROADSIDE</em><br>REPAIR
+          </h1>
+          <p class="emerg-hero__sub">
+            Broken down on the highway? Our mobile units are ready to roll. Fast dispatch, experienced technicians, and the parts to fix it on the spot.
+          </p>
+          <a href="tel:+17329380713" class="emerg-call-pill">
+            CALL (732) 938-0713
+            <span class="emerg-call-pill__icon"><i class="fas fa-phone"></i></span>
+          </a>
+        </div>
+        <div class="call-block-side fade-up" style="min-width:300px">
+          <div class="call-block">
+            <div class="call-block__label">Emergency Dispatch Line</div>
+            <div class="call-block__num">(732)<br>938-0713</div>
+            <div class="call-block__sub">Available 24 hours · 7 days a week · Holidays included</div>
+            <a href="tel:+17329380713" class="btn btn--dark btn--full btn--lg">
+              <i class="fas fa-phone"></i> TAP TO CALL
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ MOBILE CALL BLOCK ═══ -->
+  <div style="display:none;background:var(--off-white);padding:24px" id="mobileCallBlock">
+    <div class="container">
+      <div class="call-block">
+        <div class="call-block__label">Emergency Dispatch Line</div>
+        <div class="call-block__num">(732) 938-0713</div>
+        <div class="call-block__sub">Available 24 hours · 7 days a week</div>
+        <a href="tel:+17329380713" class="btn btn--dark btn--full btn--lg"><i class="fas fa-phone"></i> TAP TO CALL</a>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ WHAT WE COVER ═══ -->
+  <section class="section">
+    <div class="container">
+      <div class="section__header">
+        <span class="section__label"><i class="fas fa-wrench"></i> What We Fix</span>
+        <h2 class="section__title">On-Site Emergency Repairs</h2>
+        <p class="section__desc">Our mobile service trucks carry the tools and parts to handle most breakdowns right where you stopped. No tow required in most cases.</p>
+      </div>
+
+      <div class="grid-2" style="gap:16px">
+        <div class="emerg-feature fade-up">
+          <div class="emerg-feature__icon"><i class="fas fa-circle"></i></div>
+          <div>
+            <div class="emerg-feature__title">Tire &amp; Blowout Service</div>
+            <div class="emerg-feature__desc">Steer, drive, and trailer tire changes. We carry commercial truck tires and can mount and torque on-site. No waiting for a wrecker.</div>
+          </div>
+        </div>
+        <div class="emerg-feature fade-up">
+          <div class="emerg-feature__icon"><i class="fas fa-wind"></i></div>
+          <div>
+            <div class="emerg-feature__title">Air System Failures</div>
+            <div class="emerg-feature__desc">Brake chamber replacements, air line leaks, gladhands, air dryer, and compressor diagnostics. We restore braking quickly and safely.</div>
+          </div>
+        </div>
+        <div class="emerg-feature fade-up">
+          <div class="emerg-feature__icon"><i class="fas fa-battery-full"></i></div>
+          <div>
+            <div class="emerg-feature__title">Battery &amp; Electrical</div>
+            <div class="emerg-feature__desc">Jump starts, battery replacement, alternator checks, and no-start diagnostics. We carry commercial batteries for same-day replacement.</div>
+          </div>
+        </div>
+        <div class="emerg-feature fade-up">
+          <div class="emerg-feature__icon"><i class="fas fa-compress-arrows-alt"></i></div>
+          <div>
+            <div class="emerg-feature__title">Brake Failures</div>
+            <div class="emerg-feature__desc">Emergency brake repairs including brake shoe replacement, brake adjustment, and chamber service to restore safe stopping ability.</div>
+          </div>
+        </div>
+        <div class="emerg-feature fade-up">
+          <div class="emerg-feature__icon"><i class="fas fa-tint"></i></div>
+          <div>
+            <div class="emerg-feature__title">Hydraulic Hose Repair</div>
+            <div class="emerg-feature__desc">On-site hose fabrication and replacement for dump trucks, liftgates, and any hydraulic-equipped commercial vehicle.</div>
+          </div>
+        </div>
+        <div class="emerg-feature fade-up">
+          <div class="emerg-feature__icon"><i class="fas fa-search"></i></div>
+          <div>
+            <div class="emerg-feature__title">Diagnostics &amp; Fault Code Reading</div>
+            <div class="emerg-feature__desc">Our techs carry diagnostic tools for all major platforms. We'll read codes, identify the problem, and advise on the fastest path to a fix.</div>
+          </div>
+        </div>
+        <div class="emerg-feature fade-up">
+          <div class="emerg-feature__icon"><i class="fas fa-gas-pump"></i></div>
+          <div>
+            <div class="emerg-feature__title">Fuel &amp; DEF Service</div>
+            <div class="emerg-feature__desc">Ran out of fuel or DEF? We can assist with emergency fuel delivery and DEF refill to get you moving until the next stop.</div>
+          </div>
+        </div>
+        <div class="emerg-feature fade-up">
+          <div class="emerg-feature__icon"><i class="fas fa-plug"></i></div>
+          <div>
+            <div class="emerg-feature__title">Lighting &amp; Harness Repair</div>
+            <div class="emerg-feature__desc">Broken truck or trailer lights causing a roadside inspection risk? We repair lighting, wiring harnesses, and connectors on-site.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ HOW IT WORKS ═══ -->
+  <section class="section section--dark">
+    <div class="container">
+      <div class="section__header">
+        <span class="section__label">Fast Response</span>
+        <h2 class="section__title">What Happens When You Call</h2>
+        <p class="section__desc">We keep it simple so you can stay focused on what matters — getting your truck back on the road.</p>
+      </div>
+      <div class="process-steps">
+        <div class="step fade-up">
+          <div class="step__num">1</div>
+          <div class="step__title">Call Our Dispatch</div>
+          <p class="step__desc">Call (732) 938-0713 any time. Tell us your location, truck type, and the problem. We'll get you back on the road.</p>
+        </div>
+        <div class="step fade-up">
+          <div class="step__num">2</div>
+          <div class="step__title">Tech Dispatched</div>
+          <p class="step__desc">We dispatch the nearest available mobile unit immediately. You'll get an ETA and the tech's name before they arrive.</p>
+        </div>
+        <div class="step fade-up">
+          <div class="step__num">3</div>
+          <div class="step__title">On-Site Repair</div>
+          <p class="step__desc">Your tech arrives, diagnoses the issue, and gets to work. Most roadside repairs are completed in under 2 hours.</p>
+        </div>
+        <div class="step fade-up">
+          <div class="step__num">4</div>
+          <div class="step__title">Back Rolling</div>
+          <p class="step__desc">Your truck is cleared and verified before the tech leaves. Invoice sent by email. Get back to business.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ BOTTOM CTA ═══ -->
+  <section class="section section--red">
+    <div class="container text-center">
+      <h2 class="section__title" style="margin-bottom:12px">Don't Wait on the Side of the Road.</h2>
+      <p style="color:rgba(255,255,255,.85);max-width:480px;margin:0 auto 36px;font-size:1.05rem">
+        Every minute counts when your truck is down. Call our emergency line now and we'll get moving.
+      </p>
+      <div style="display:flex;gap:16px;justify-content:center;flex-wrap:wrap">
+        <a href="tel:+17329380713" class="btn btn--dark btn--lg" style="font-size:1.1rem">
+          <i class="fas fa-phone"></i> (732) 938-0713
+        </a>
+        <a href="/contact.html" class="btn btn--outline-white btn--lg">REQUEST ONLINE</a>
+      </div>
+    </div>
+  </section>
+
+  <div id="footer-placeholder"></div>
+  <script src="/js/components.js"></script>
+  <script src="/js/main.js"></script>
+  <script>
+    if (window.innerWidth <= 768) {
+      document.getElementById('mobileCallBlock').style.display = 'block';
+    }
+  </script>
+</body>
+</html>
