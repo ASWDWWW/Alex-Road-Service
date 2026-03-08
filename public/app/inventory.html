@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Inventory | Alex Road Service Ops</title>
+  <link rel="stylesheet" href="/app/css/app.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+</head>
+<body class="app-body">
+<div id="sidebar-placeholder"></div>
+<main class="app-main">
+  <div id="topbar-placeholder" data-title="Inventory"></div>
+  <div class="app-content">
+
+    <div class="page-header">
+      <div>
+        <div class="page-header__title">Parts &amp; Inventory</div>
+        <div class="page-header__sub">Track stock levels, costs, and reorder alerts</div>
+      </div>
+      <div class="page-header__actions">
+        <button class="btn btn--secondary btn--sm" onclick="showToast('Reorder list exported','info')"><i class="fas fa-file-download"></i> Reorder List</button>
+        <button class="btn btn--primary" onclick="openModal('addPartModal')"><i class="fas fa-plus"></i> Add Part</button>
+      </div>
+    </div>
+
+    <!-- KPI Row -->
+    <div class="kpi-grid" style="margin-bottom:18px">
+      <div class="kpi-card">
+        <div class="kpi-card__row">
+          <div><div class="kpi-card__label">Total SKUs</div><div class="kpi-card__value">15</div></div>
+          <div class="kpi-card__icon blue"><i class="fas fa-boxes"></i></div>
+        </div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-card__row">
+          <div><div class="kpi-card__label">In Stock</div><div class="kpi-card__value green">10</div></div>
+          <div class="kpi-card__icon green"><i class="fas fa-check-circle"></i></div>
+        </div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-card__row">
+          <div><div class="kpi-card__label">Low Stock</div><div class="kpi-card__value amber">4</div></div>
+          <div class="kpi-card__icon amber"><i class="fas fa-exclamation-triangle"></i></div>
+        </div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-card__row">
+          <div><div class="kpi-card__label">Out of Stock</div><div class="kpi-card__value red">1</div></div>
+          <div class="kpi-card__icon red"><i class="fas fa-times-circle"></i></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Low stock alert banner -->
+    <div class="alert-item alert-item--red" style="margin-bottom:14px">
+      <i class="fas fa-exclamation-circle alert-item__icon"></i>
+      <div>
+        <div class="alert-item__title">Air Line Tubing 1/2" (P013) is completely out of stock</div>
+        <div class="alert-item__desc">Qty: 0 · Minimum: 10 — Reorder immediately to avoid job delays</div>
+      </div>
+    </div>
+
+    <!-- Filter Bar -->
+    <div class="filter-bar">
+      <div class="filter-tabs" id="invFilterTabs">
+        <button class="filter-tab active" data-filter="all">All</button>
+        <button class="filter-tab" data-filter="In Stock">In Stock</button>
+        <button class="filter-tab" data-filter="Low">Low Stock</button>
+        <button class="filter-tab" data-filter="Out of Stock">Out of Stock</button>
+      </div>
+      <div class="filter-search">
+        <i class="fas fa-search"></i>
+        <input type="text" id="invSearch" placeholder="Search part #, name, category…">
+      </div>
+      <div class="filter-search" style="width:160px">
+        <select id="catFilter" style="border:none;outline:none;font-size:.83rem;color:var(--black);background:none;width:100%;cursor:pointer">
+          <option value="">All Categories</option>
+          <option>Brakes</option>
+          <option>Air System</option>
+          <option>Electrical</option>
+          <option>Fuel</option>
+          <option>Hydraulic</option>
+          <option>Cooling</option>
+          <option>Fluids</option>
+        </select>
+      </div>
+      <span class="filter-count" id="invCount"></span>
+    </div>
+
+    <!-- Table -->
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Part #</th><th>Description</th><th>Category</th>
+            <th style="text-align:center">Qty</th><th style="text-align:center">Min Qty</th>
+            <th style="text-align:right">Cost</th><th style="text-align:right">Sale Price</th>
+            <th>Status</th><th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="invTable"></tbody>
+      </table>
+    </div>
+
+  </div>
+</main>
+
+<!-- Add Part Modal -->
+<div class="modal-overlay" id="addPartModal">
+  <div class="modal">
+    <div class="modal__header">
+      <div class="modal__title">Add Part / Item</div>
+      <button class="modal__close" data-close-modal><i class="fas fa-times"></i></button>
+    </div>
+    <div class="modal__body">
+      <div class="form-row-2">
+        <div class="form-row"><label class="form-label">Part Number *</label><input class="form-input" placeholder="e.g. AIR-BC-1650"></div>
+        <div class="form-row">
+          <label class="form-label">Category</label>
+          <select class="form-select">
+            <option>Brakes</option>
+            <option>Air System</option>
+            <option>Electrical</option>
+            <option>Fuel</option>
+            <option>Hydraulic</option>
+            <option>Cooling</option>
+            <option>Fluids</option>
+            <option>Other</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row"><label class="form-label">Description *</label><input class="form-input" placeholder="Part name/description"></div>
+      <div class="form-row-2">
+        <div class="form-row"><label class="form-label">Current Qty</label><input class="form-input" type="number" placeholder="0" min="0"></div>
+        <div class="form-row"><label class="form-label">Min Qty (Reorder Point)</label><input class="form-input" type="number" placeholder="0" min="0"></div>
+      </div>
+      <div class="form-row-2">
+        <div class="form-row"><label class="form-label">Cost Price ($)</label><input class="form-input" type="number" placeholder="0.00" step="0.01"></div>
+        <div class="form-row"><label class="form-label">Sale Price ($)</label><input class="form-input" type="number" placeholder="0.00" step="0.01"></div>
+      </div>
+      <div class="form-row"><label class="form-label">Supplier / Notes</label><input class="form-input" placeholder="Supplier name or notes"></div>
+    </div>
+    <div class="modal__footer">
+      <button class="btn btn--secondary" data-close-modal>Cancel</button>
+      <button class="btn btn--primary" id="savePartBtn"><i class="fas fa-check"></i> Add to Inventory</button>
+    </div>
+  </div>
+</div>
+
+<script src="/app/js/mock-data.js"></script>
+<script src="/app/js/app-components.js"></script>
+<script>
+  let activeFilter = 'all', searchVal = '', catVal = '';
+
+  function rowBg(status) {
+    if (status === 'Out of Stock') return 'background:rgba(229,31,43,.03)';
+    if (status === 'Low')          return 'background:#FFFBF5';
+    return '';
+  }
+
+  function renderTable() {
+    const data = INVENTORY.filter(p => {
+      const matchFilter = activeFilter === 'all' || p.status === activeFilter;
+      const matchCat    = !catVal || p.cat === catVal;
+      const q = searchVal.toLowerCase();
+      const matchSearch = !q || p.partNo.toLowerCase().includes(q) || p.desc.toLowerCase().includes(q) || p.cat.toLowerCase().includes(q);
+      return matchFilter && matchCat && matchSearch;
+    });
+    document.getElementById('invCount').textContent = `${data.length} item${data.length!==1?'s':''}`;
+    document.getElementById('invTable').innerHTML = data.length ? data.map(p => `
+      <tr style="${rowBg(p.status)}">
+        <td class="td-mono td-bold" style="white-space:nowrap">${p.partNo}</td>
+        <td class="td-primary">${p.desc}</td>
+        <td><span style="font-size:.76rem;font-weight:600;color:var(--steel)">${p.cat}</span></td>
+        <td style="text-align:center;font-weight:700;color:${p.qty===0?'var(--red)':p.qty<=p.min?'#D97706':'inherit'}">${p.qty}</td>
+        <td style="text-align:center;color:var(--warm-gray)">${p.min}</td>
+        <td style="text-align:right">$${p.cost.toFixed(2)}</td>
+        <td style="text-align:right;font-weight:600">$${p.price.toFixed(2)}</td>
+        <td>${chip(p.status)}</td>
+        <td class="td-actions">
+          <button class="btn btn--ghost btn--sm btn--icon" title="Adjust Stock" onclick="showToast('Stock adjusted for '+this.closest('tr').querySelectorAll('td')[1].textContent,'success')"><i class="fas fa-plus-minus"></i></button>
+          <button class="btn btn--ghost btn--sm btn--icon" title="Edit"><i class="fas fa-pencil-alt"></i></button>
+          ${p.status!=='In Stock' ? `<button class="btn btn--secondary btn--sm" onclick="showToast('Reorder request sent','info')"><i class="fas fa-shopping-cart"></i> Reorder</button>` : ''}
+        </td>
+      </tr>
+    `).join('') : `<tr><td colspan="9"><div class="empty-state"><div class="empty-state__icon"><i class="fas fa-boxes"></i></div><div class="empty-state__title">No items found</div></div></td></tr>`;
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    renderTable();
+    document.getElementById('invFilterTabs').addEventListener('click', e => {
+      const btn = e.target.closest('.filter-tab'); if (!btn) return;
+      document.querySelectorAll('#invFilterTabs .filter-tab').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active'); activeFilter = btn.dataset.filter; renderTable();
+    });
+    document.getElementById('invSearch').addEventListener('input', e => { searchVal = e.target.value; renderTable(); });
+    document.getElementById('catFilter').addEventListener('change', e => { catVal = e.target.value; renderTable(); });
+    document.getElementById('savePartBtn').addEventListener('click', () => {
+      closeModal('addPartModal');
+      showToast('Part added to inventory!', 'success');
+    });
+  });
+</script>
+</body>
+</html>

@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Invoices | Alex Road Service Ops</title>
+  <link rel="stylesheet" href="/app/css/app.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+</head>
+<body class="app-body">
+<div id="sidebar-placeholder"></div>
+<main class="app-main">
+  <div id="topbar-placeholder" data-title="Invoices"></div>
+  <div class="app-content">
+
+    <div class="page-header">
+      <div>
+        <div class="page-header__title">Invoices</div>
+        <div class="page-header__sub">Issue and track all customer invoices</div>
+      </div>
+      <div class="page-header__actions">
+        <button class="btn btn--secondary btn--sm"><i class="fas fa-download"></i> Export</button>
+        <button class="btn btn--primary" onclick="showToast('Select a completed WO to generate an invoice','info')"><i class="fas fa-plus"></i> New Invoice</button>
+      </div>
+    </div>
+
+    <!-- KPI Row -->
+    <div class="kpi-grid" style="margin-bottom:18px">
+      <div class="kpi-card">
+        <div class="kpi-card__row">
+          <div><div class="kpi-card__label">Total Invoiced (MTD)</div><div class="kpi-card__value">$3,690</div></div>
+          <div class="kpi-card__icon blue"><i class="fas fa-file-invoice-dollar"></i></div>
+        </div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-card__row">
+          <div><div class="kpi-card__label">Paid</div><div class="kpi-card__value green">$1,805</div></div>
+          <div class="kpi-card__icon green"><i class="fas fa-check-circle"></i></div>
+        </div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-card__row">
+          <div><div class="kpi-card__label">Awaiting Payment</div><div class="kpi-card__value amber">$675</div></div>
+          <div class="kpi-card__icon amber"><i class="fas fa-clock"></i></div>
+        </div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-card__row">
+          <div><div class="kpi-card__label">Overdue</div><div class="kpi-card__value red">$1,410</div></div>
+          <div class="kpi-card__icon red"><i class="fas fa-exclamation-circle"></i></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Filter Bar -->
+    <div class="filter-bar">
+      <div class="filter-tabs" id="invFilterTabs">
+        <button class="filter-tab active" data-filter="all">All</button>
+        <button class="filter-tab" data-filter="Sent">Sent</button>
+        <button class="filter-tab" data-filter="Paid">Paid</button>
+        <button class="filter-tab" data-filter="Overdue">Overdue</button>
+        <button class="filter-tab" data-filter="Draft">Draft</button>
+      </div>
+      <div class="filter-search">
+        <i class="fas fa-search"></i>
+        <input type="text" id="invSearch" placeholder="Search invoice or customer…">
+      </div>
+      <span class="filter-count" id="invCount"></span>
+    </div>
+
+    <!-- Table -->
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Invoice #</th><th>Date</th><th>Due Date</th><th>Customer</th>
+            <th>Work Order</th><th style="text-align:right">Total</th><th>Status</th><th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="invTable"></tbody>
+      </table>
+    </div>
+
+  </div>
+</main>
+
+<script src="/app/js/mock-data.js"></script>
+<script src="/app/js/app-components.js"></script>
+<script>
+  let activeFilter = 'all', searchVal = '';
+
+  function renderTable() {
+    const data = INVOICES.filter(inv => {
+      const matchFilter = activeFilter === 'all' || inv.status === activeFilter;
+      const q = searchVal.toLowerCase();
+      const matchSearch = !q || inv.id.toLowerCase().includes(q) || inv.customer.toLowerCase().includes(q);
+      return matchFilter && matchSearch;
+    });
+    document.getElementById('invCount').textContent = `${data.length} invoice${data.length!==1?'s':''}`;
+    document.getElementById('invTable').innerHTML = data.length ? data.map(inv => {
+      const isOverdue = inv.status === 'Overdue';
+      return `
+      <tr style="${isOverdue?'background:rgba(229,31,43,.025)':''}">
+        <td class="td-mono td-bold">${inv.id}</td>
+        <td class="td-muted">${inv.date}</td>
+        <td class="${isOverdue?'td-red':'td-muted'}">${inv.due}${isOverdue?' <i class="fas fa-exclamation-triangle" style="font-size:.7rem;margin-left:4px"></i>':''}</td>
+        <td class="td-primary">${inv.customer}</td>
+        <td class="td-mono td-muted">${inv.wo}</td>
+        <td style="text-align:right;font-weight:700">${inv.total}</td>
+        <td>${chip(inv.status)}</td>
+        <td class="td-actions">
+          <button class="btn btn--ghost btn--sm btn--icon" title="Print"><i class="fas fa-print"></i></button>
+          <button class="btn btn--ghost btn--sm btn--icon" title="Send"><i class="fas fa-paper-plane"></i></button>
+          ${inv.status!=='Paid' ? `<button class="btn btn--primary btn--sm" onclick="showToast('Payment recorded for '+this.closest('tr').querySelector('.td-primary').textContent,'success')">Record Payment</button>` : `<span style="font-size:.78rem;color:#059669;font-weight:600"><i class="fas fa-check"></i> Paid</span>`}
+        </td>
+      </tr>`;
+    }).join('') : `<tr><td colspan="8"><div class="empty-state"><div class="empty-state__icon"><i class="fas fa-file-invoice-dollar"></i></div><div class="empty-state__title">No invoices found</div></div></td></tr>`;
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    renderTable();
+    document.getElementById('invFilterTabs').addEventListener('click', e => {
+      const btn = e.target.closest('.filter-tab'); if (!btn) return;
+      document.querySelectorAll('#invFilterTabs .filter-tab').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active'); activeFilter = btn.dataset.filter; renderTable();
+    });
+    document.getElementById('invSearch').addEventListener('input', e => { searchVal = e.target.value; renderTable(); });
+  });
+</script>
+</body>
+</html>

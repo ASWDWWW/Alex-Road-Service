@@ -1,6 +1,20 @@
-# Alex Road Service — Public Website
+# Alex Road Service — Website & Operations Platform
 
-Public marketing website for Alex Road Service: 24/7 emergency roadside repair and commercial truck repair. Built for Firebase Hosting.
+Public marketing website and internal operations platform for Alex Road Service: 24/7 emergency roadside repair and commercial truck repair. Built for Firebase Hosting.
+
+---
+
+## Operations Platform — Demo Login
+
+The internal ops platform lives at `/app/dashboard.html` (after login). Use the credentials below to sign in:
+
+| Role        | Email                             | Password  |
+|-------------|-----------------------------------|-----------|
+| Admin       | admin@alexroadservice.com         | Admin123  |
+| Technician  | tech@alexroadservice.com          | Tech123   |
+| Office Staff| office@alexroadservice.com        | Office123 |
+
+> **Note:** These are mock credentials stored client-side for development. Before going live, replace the mock auth in `public/login.html` with real Firebase Authentication and remove this table from the README.
 
 ---
 
@@ -35,7 +49,7 @@ Then open **http://localhost:3000**
 npm install -g firebase-tools
 ```
 
-### 2. Login
+### 2. Log in
 
 ```bash
 firebase login
@@ -76,7 +90,7 @@ Update the `SITE` object at the top with your real business details:
 | `phoneEmerg`   | 24/7 emergency line (display) |
 | `phoneTelEmg`  | Same emergency number as `tel:` link |
 | `email`        | Contact email |
-| `address`       | Full shop address |
+| `address`      | Full shop address |
 | `hours`        | Shop and emergency hours text |
 | `mapEmbed`     | Google Maps embed URL for your actual location |
 
@@ -114,8 +128,8 @@ If you use the contact form with Firebase:
 
 ```
 Alex-Road-Service/
-├── public/           # Static site (deployed to Firebase)
-│   ├── index.html    # Home
+├── public/                  # Static site (deployed to Firebase)
+│   ├── index.html           # Home
 │   ├── about.html
 │   ├── services.html
 │   ├── emergency.html
@@ -123,14 +137,29 @@ Alex-Road-Service/
 │   ├── contact.html
 │   ├── reviews.html
 │   ├── financing.html
-│   ├── login.html
+│   ├── login.html           # Staff login (mock auth → swap for Firebase)
 │   ├── css/
-│   │   └── styles.css
-│   └── js/
-│       ├── components.js   # Nav + footer (update SITE here)
-│       ├── main.js
-│       └── firebase-config.js
+│   │   └── styles.css       # Public site design system
+│   ├── js/
+│   │   ├── components.js    # Nav + footer (update SITE here)
+│   │   ├── main.js
+│   │   └── firebase-config.js
+│   └── app/                 # Internal Operations Platform (auth-gated)
+│       ├── dashboard.html
+│       ├── customers.html
+│       ├── trucks.html
+│       ├── work-orders.html
+│       ├── estimates.html
+│       ├── invoices.html
+│       ├── payments.html
+│       ├── inventory.html
+│       ├── reports.html
+│       ├── css/
+│       │   └── app.css      # Ops platform design system
+│       └── js/
+│           ├── app-components.js  # Sidebar, topbar, toast, modal helpers
+│           └── mock-data.js       # Mock customers, trucks, WOs, etc.
 ├── firebase.json
-├── .firebaserc        # Set your project ID here
+├── .firebaserc              # Set your project ID here
 └── README.md
 ```

@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard | Alex Road Service Ops</title>
+  <link rel="stylesheet" href="/app/css/app.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+</head>
+<body class="app-body">
+<div id="sidebar-placeholder"></div>
+
+<main class="app-main">
+  <div id="topbar-placeholder" data-title="Dashboard"></div>
+
+  <div class="app-content">
+
+    <!-- KPI Cards -->
+    <div class="kpi-grid">
+      <div class="kpi-card">
+        <div class="kpi-card__row">
+          <div>
+            <div class="kpi-card__label">Open Work Orders</div>
+            <div class="kpi-card__value red">3</div>
+          </div>
+          <div class="kpi-card__icon red"><i class="fas fa-clipboard-list"></i></div>
+        </div>
+        <div class="kpi-card__trend">
+          <i class="fas fa-arrow-up up"></i>
+          <span>1 new today</span>
+        </div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-card__row">
+          <div>
+            <div class="kpi-card__label">Revenue MTD</div>
+            <div class="kpi-card__value green">$5,130</div>
+          </div>
+          <div class="kpi-card__icon green"><i class="fas fa-dollar-sign"></i></div>
+        </div>
+        <div class="kpi-card__trend">
+          <i class="fas fa-arrow-up up"></i>
+          <span>Up from $4,280 last month</span>
+        </div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-card__row">
+          <div>
+            <div class="kpi-card__label">Invoices Due</div>
+            <div class="kpi-card__value amber">$1,830</div>
+          </div>
+          <div class="kpi-card__icon amber"><i class="fas fa-file-invoice-dollar"></i></div>
+        </div>
+        <div class="kpi-card__trend">
+          <i class="fas fa-exclamation-circle down"></i>
+          <span>2 overdue</span>
+        </div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-card__row">
+          <div>
+            <div class="kpi-card__label">Low / Out of Stock</div>
+            <div class="kpi-card__value red">4</div>
+          </div>
+          <div class="kpi-card__icon red"><i class="fas fa-boxes"></i></div>
+        </div>
+        <div class="kpi-card__trend">
+          <i class="fas fa-exclamation-triangle down"></i>
+          <span>1 completely out of stock</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Recent Work Orders -->
+    <div class="app-card" style="margin-bottom:16px">
+      <div class="app-card__header">
+        <div class="app-card__title"><i class="fas fa-clipboard-list" style="color:var(--red);margin-right:8px"></i>Recent Work Orders</div>
+        <div style="display:flex;gap:8px">
+          <a href="/app/work-orders.html" class="btn btn--ghost btn--sm">View All <i class="fas fa-arrow-right"></i></a>
+          <a href="/app/work-orders.html" class="btn btn--primary btn--sm"><i class="fas fa-plus"></i> New WO</a>
+        </div>
+      </div>
+      <div class="table-wrap" style="border:none;border-radius:0">
+        <table>
+          <thead>
+            <tr>
+              <th>WO #</th><th>Date</th><th>Customer</th><th>Truck</th><th>Tech</th><th>Status</th><th style="text-align:right">Total</th>
+            </tr>
+          </thead>
+          <tbody id="dashWoTable"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Lower grid: Schedule + Alerts -->
+    <div class="dash-grid">
+
+      <!-- Today's Schedule -->
+      <div class="app-card">
+        <div class="app-card__header">
+          <div class="app-card__title"><i class="fas fa-calendar-day" style="color:var(--red);margin-right:8px"></i>Today's Schedule — Mar 6, 2026</div>
+        </div>
+        <div class="app-card__body">
+          <div class="sched-item">
+            <div class="sched-time">8:00 AM</div>
+            <div class="sched-dot red"></div>
+            <div>
+              <div class="sched-title">WO-2026-0012 · Reid Trucking LLC</div>
+              <div class="sched-sub">Air brake chamber replacement — Mike Santos</div>
+            </div>
+          </div>
+          <div class="sched-item">
+            <div class="sched-time">9:30 AM</div>
+            <div class="sched-dot amber"></div>
+            <div>
+              <div class="sched-title">WO-2026-0009 · Travis Cooper</div>
+              <div class="sched-sub">No-start diagnostic — Tom Ellis</div>
+            </div>
+          </div>
+          <div class="sched-item">
+            <div class="sched-time">11:00 AM</div>
+            <div class="sched-dot amber"></div>
+            <div>
+              <div class="sched-title">WO-2026-0010 · Derek James (Waiting Parts)</div>
+              <div class="sched-sub">Alternator on order — Mike Santos on hold</div>
+            </div>
+          </div>
+          <div class="sched-item">
+            <div class="sched-time">1:30 PM</div>
+            <div class="sched-dot green"></div>
+            <div>
+              <div class="sched-title">EST-2026-006 · WashEx Logistics</div>
+              <div class="sched-sub">Estimate walkthrough — Paul Washington</div>
+            </div>
+          </div>
+          <div class="sched-item">
+            <div class="sched-time">3:00 PM</div>
+            <div class="sched-dot green"></div>
+            <div>
+              <div class="sched-title">PM Due · Volvo VNL 760 (Unit 414)</div>
+              <div class="sched-sub">Overdue PM — schedule with WashEx</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Alerts & Reminders -->
+      <div>
+        <div class="app-card" style="margin-bottom:14px">
+          <div class="app-card__header">
+            <div class="app-card__title"><i class="fas fa-bell" style="color:var(--red);margin-right:8px"></i>Alerts &amp; Reminders</div>
+          </div>
+          <div class="app-card__body" style="padding:14px">
+            <div class="alert-item alert-item--red">
+              <i class="fas fa-exclamation-circle alert-item__icon"></i>
+              <div>
+                <div class="alert-item__title">2 Overdue Invoices</div>
+                <div class="alert-item__desc">INV-004 · Reid Trucking ($160) &amp; INV-003 · James Construction ($1,250)</div>
+              </div>
+            </div>
+            <div class="alert-item alert-item--red">
+              <i class="fas fa-boxes alert-item__icon"></i>
+              <div>
+                <div class="alert-item__title">Air Line Tubing Out of Stock</div>
+                <div class="alert-item__desc">P013 · AIR-LINE-12 — reorder immediately</div>
+              </div>
+            </div>
+            <div class="alert-item alert-item--amber">
+              <i class="fas fa-tools alert-item__icon"></i>
+              <div>
+                <div class="alert-item__title">3 Parts at Low Inventory</div>
+                <div class="alert-item__desc">Air Dryer, Alternator, DEF Fluid — check inventory page</div>
+              </div>
+            </div>
+            <div class="alert-item alert-item--amber">
+              <i class="fas fa-truck alert-item__icon"></i>
+              <div>
+                <div class="alert-item__title">2 Trucks PM Overdue</div>
+                <div class="alert-item__desc">Unit 414 · Volvo VNL 760 &amp; Unit 777 · Peterbilt 389</div>
+              </div>
+            </div>
+            <div class="alert-item alert-item--blue">
+              <i class="fas fa-file-alt alert-item__icon"></i>
+              <div>
+                <div class="alert-item__title">2 Estimates Awaiting Response</div>
+                <div class="alert-item__desc">EST-006 · WashEx Logistics &amp; EST-004 · Kim Brothers</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Quick KPI Panel -->
+        <div class="app-card">
+          <div class="app-card__header">
+            <div class="app-card__title">Month Snapshot</div>
+          </div>
+          <div class="app-card__body" style="padding:14px">
+            <div style="display:flex;flex-direction:column;gap:11px">
+              <div style="display:flex;justify-content:space-between;align-items:center;font-size:.83rem">
+                <span style="color:var(--steel)">Jobs Completed</span>
+                <span style="font-weight:700">6</span>
+              </div>
+              <div style="display:flex;justify-content:space-between;align-items:center;font-size:.83rem">
+                <span style="color:var(--steel)">Invoices Sent</span>
+                <span style="font-weight:700">4</span>
+              </div>
+              <div style="display:flex;justify-content:space-between;align-items:center;font-size:.83rem">
+                <span style="color:var(--steel)">Payments Received</span>
+                <span style="font-weight:700;color:#059669">$1,805.00</span>
+              </div>
+              <div style="display:flex;justify-content:space-between;align-items:center;font-size:.83rem">
+                <span style="color:var(--steel)">Outstanding Balance</span>
+                <span style="font-weight:700;color:var(--red)">$1,830.00</span>
+              </div>
+              <div style="border-top:1px solid var(--border);padding-top:10px;display:flex;justify-content:space-between;align-items:center;font-size:.83rem">
+                <span style="font-weight:700">Total MTD Revenue</span>
+                <span style="font-family:var(--font-head);font-size:1.2rem;color:var(--black)">$5,130</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /dash-grid -->
+  </div><!-- /app-content -->
+</main>
+
+<script src="/app/js/mock-data.js"></script>
+<script src="/app/js/app-components.js"></script>
+<script>
+  document.addEventListener('DOMContentLoaded', () => {
+    const tbody = document.getElementById('dashWoTable');
+    const recent = WORK_ORDERS.slice(0, 6);
+    tbody.innerHTML = recent.map(w => `
+      <tr>
+        <td class="td-mono td-bold">${w.id}</td>
+        <td class="td-muted">${w.date}</td>
+        <td class="td-primary">${w.customer}</td>
+        <td class="td-muted" style="font-size:.78rem">${w.truck}</td>
+        <td class="td-muted">${w.tech}</td>
+        <td>${chip(w.status)}</td>
+        <td style="text-align:right;font-weight:700">${fmt$(w.total)}</td>
+      </tr>
+    `).join('');
+  });
+</script>
+</body>
+</html>

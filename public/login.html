@@ -122,9 +122,17 @@
           <span>This platform is for authorized Alex Road Service staff only. Unauthorized access attempts are logged. Contact your administrator if you need access.</span>
         </div>
 
-        <p style="font-size:0.78rem;color:var(--warm-gray);text-align:center;margin-top:24px">
-          Need access? Contact <a href="mailto:info@alexroadservice.com" style="color:var(--red);font-weight:600">info@alexroadservice.com</a>
-        </p>
+        <!-- Demo credentials -->
+        <div style="background:#F0FFF4;border:1px solid #A7F3D0;border-radius:8px;padding:14px 16px;margin-top:20px">
+          <div style="font-size:.72rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#065F46;margin-bottom:8px">
+            <i class="fas fa-flask" style="margin-right:5px"></i> Demo Credentials
+          </div>
+          <div style="font-size:.8rem;color:#065F46;display:flex;flex-direction:column;gap:4px">
+            <div><strong>Admin:</strong> admin@alexroadservice.com / Admin123</div>
+            <div><strong>Tech:</strong> tech@alexroadservice.com / Tech123</div>
+            <div><strong>Office:</strong> office@alexroadservice.com / Office123</div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -132,45 +140,35 @@
   <script src="/js/components.js"></script>
   <script src="/js/main.js"></script>
 
-  <!-- Firebase Auth for Login -->
-  <script type="module">
-    import { initializeApp }     from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-    import { getAuth, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+  <!-- Mock Auth (replace with Firebase Auth when ready) -->
+  <script>
+    const MOCK_USERS = [
+      { email: 'admin@alexroadservice.com', password: 'Admin123', name: 'Alex Rodriguez', role: 'Administrator' },
+      { email: 'tech@alexroadservice.com',  password: 'Tech123',  name: 'Mike Santos',    role: 'Technician'    },
+      { email: 'office@alexroadservice.com',password: 'Office123',name: 'Sarah Torres',   role: 'Office Staff'  },
+    ];
 
-    // TODO: Replace with your Firebase config
-    const firebaseConfig = {
-      apiKey:            "YOUR_API_KEY",
-      authDomain:        "YOUR_PROJECT_ID.firebaseapp.com",
-      projectId:         "YOUR_PROJECT_ID",
-      storageBucket:     "YOUR_PROJECT_ID.appspot.com",
-      messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
-      appId:             "YOUR_APP_ID",
-    };
+    const form     = document.getElementById('loginForm');
+    const errBox   = document.getElementById('loginError');
+    const errMsg   = document.getElementById('loginErrorMsg');
+    const loginBtn = document.getElementById('loginBtn');
 
-    const app  = initializeApp(firebaseConfig);
-    const auth = getAuth(app);
-
-    const form      = document.getElementById('loginForm');
-    const errBox    = document.getElementById('loginError');
-    const errMsg    = document.getElementById('loginErrorMsg');
-    const loginBtn  = document.getElementById('loginBtn');
-
-    // Password toggle
+    /* Password toggle */
     const passInput  = document.getElementById('loginPassword');
     const passToggle = document.getElementById('passToggle');
     const passIcon   = document.getElementById('passToggleIcon');
-
     passToggle?.addEventListener('click', () => {
-      const isPass = passInput.type === 'password';
-      passInput.type = isPass ? 'text' : 'password';
-      passIcon.className = isPass ? 'fas fa-eye-slash' : 'fas fa-eye';
+      const show = passInput.type === 'password';
+      passInput.type = show ? 'text' : 'password';
+      passIcon.className = show ? 'fas fa-eye-slash' : 'fas fa-eye';
     });
 
-    form?.addEventListener('submit', async (e) => {
+    /* Submit */
+    form?.addEventListener('submit', (e) => {
       e.preventDefault();
       errBox.classList.remove('show');
 
-      const email    = form.elements['email'].value.trim();
+      const email    = form.elements['email'].value.trim().toLowerCase();
       const password = form.elements['password'].value;
 
       if (!email || !password) {
@@ -182,25 +180,20 @@
       loginBtn.disabled  = true;
       loginBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> SIGNING IN...';
 
-      try {
-        await signInWithEmailAndPassword(auth, email, password);
-        // Redirect to internal operations platform
-        window.location.href = '/app/dashboard.html';
-      } catch (err) {
-        console.error('Login error:', err.code);
-        const msgs = {
-          'auth/user-not-found':    'No account found with that email address.',
-          'auth/wrong-password':    'Incorrect password. Please try again.',
-          'auth/invalid-email':     'Please enter a valid email address.',
-          'auth/too-many-requests': 'Too many attempts. Please wait a moment and try again.',
-          'auth/network-request-failed': 'Network error. Check your connection and try again.',
-        };
-        errMsg.textContent = msgs[err.code] || 'Login failed. Please try again.';
-        errBox.classList.add('show');
-      } finally {
-        loginBtn.disabled  = false;
-        loginBtn.innerHTML = 'SIGN IN';
-      }
+      /* Simulate async check */
+      setTimeout(() => {
+        const user = MOCK_USERS.find(u => u.email === email && u.password === password);
+        if (user) {
+          sessionStorage.setItem('appLoggedIn', '1');
+          sessionStorage.setItem('appUser', JSON.stringify({ name: user.name, role: user.role }));
+          window.location.href = '/app/dashboard.html';
+        } else {
+          errMsg.textContent = 'Invalid email or password. Check the demo credentials below.';
+          errBox.classList.add('show');
+          loginBtn.disabled  = false;
+          loginBtn.innerHTML = 'SIGN IN';
+        }
+      }, 700);
     });
   </script>
 </body>

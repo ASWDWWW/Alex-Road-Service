@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Trucks | Alex Road Service Ops</title>
+  <link rel="stylesheet" href="/app/css/app.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+</head>
+<body class="app-body">
+<div id="sidebar-placeholder"></div>
+<main class="app-main">
+  <div id="topbar-placeholder" data-title="Trucks"></div>
+  <div class="app-content">
+
+    <div class="page-header">
+      <div>
+        <div class="page-header__title">Trucks &amp; Fleet Records</div>
+        <div class="page-header__sub">Vehicle records, service history, and PM tracking</div>
+      </div>
+      <div class="page-header__actions">
+        <button class="btn btn--secondary btn--sm"><i class="fas fa-download"></i> Export</button>
+        <button class="btn btn--primary" onclick="openModal('addTruckModal')"><i class="fas fa-plus"></i> Add Truck</button>
+      </div>
+    </div>
+
+    <!-- KPI Row -->
+    <div class="kpi-grid" style="margin-bottom:18px">
+      <div class="kpi-card">
+        <div class="kpi-card__row">
+          <div><div class="kpi-card__label">Total Units</div><div class="kpi-card__value">10</div></div>
+          <div class="kpi-card__icon blue"><i class="fas fa-truck"></i></div>
+        </div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-card__row">
+          <div><div class="kpi-card__label">Active</div><div class="kpi-card__value green">7</div></div>
+          <div class="kpi-card__icon green"><i class="fas fa-road"></i></div>
+        </div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-card__row">
+          <div><div class="kpi-card__label">In Shop</div><div class="kpi-card__value red">1</div></div>
+          <div class="kpi-card__icon red"><i class="fas fa-tools"></i></div>
+        </div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-card__row">
+          <div><div class="kpi-card__label">PM Due</div><div class="kpi-card__value amber">2</div></div>
+          <div class="kpi-card__icon amber"><i class="fas fa-calendar-exclamation"></i></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Filter Bar -->
+    <div class="filter-bar">
+      <div class="filter-tabs" id="truckFilterTabs">
+        <button class="filter-tab active" data-filter="all">All</button>
+        <button class="filter-tab" data-filter="Active">Active</button>
+        <button class="filter-tab" data-filter="In Shop">In Shop</button>
+        <button class="filter-tab" data-filter="PM Due">PM Due</button>
+      </div>
+      <div class="filter-search">
+        <i class="fas fa-search"></i>
+        <input type="text" id="truckSearch" placeholder="Search unit, make, owner…">
+      </div>
+      <span class="filter-count" id="truckCount"></span>
+    </div>
+
+    <!-- Table -->
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Unit #</th><th>Year / Make / Model</th><th>VIN</th><th>Owner</th>
+            <th>Mileage</th><th>Last PM</th><th>Next PM Due</th><th>Status</th><th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="truckTable"></tbody>
+      </table>
+    </div>
+
+  </div>
+</main>
+
+<!-- Add Truck Modal -->
+<div class="modal-overlay" id="addTruckModal">
+  <div class="modal">
+    <div class="modal__header">
+      <div class="modal__title">Add Truck</div>
+      <button class="modal__close" data-close-modal><i class="fas fa-times"></i></button>
+    </div>
+    <div class="modal__body">
+      <div class="form-row-2">
+        <div class="form-row"><label class="form-label">Unit Number *</label><input class="form-input" placeholder="e.g. 205"></div>
+        <div class="form-row">
+          <label class="form-label">Customer / Owner *</label>
+          <select class="form-select" id="truckOwnerSelect">
+            <option value="">Select customer…</option>
+            <option>Reid Trucking LLC</option>
+            <option>Lopez Distribution</option>
+            <option>James Construction</option>
+            <option>Travis Cooper</option>
+            <option>Linda Gomez</option>
+            <option>WashEx Logistics</option>
+            <option>Kim Brothers Inc.</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row-2">
+        <div class="form-row"><label class="form-label">Year</label><input class="form-input" type="number" placeholder="e.g. 2021"></div>
+        <div class="form-row"><label class="form-label">Make</label><input class="form-input" placeholder="e.g. Kenworth"></div>
+      </div>
+      <div class="form-row-2">
+        <div class="form-row"><label class="form-label">Model</label><input class="form-input" placeholder="e.g. T680"></div>
+        <div class="form-row"><label class="form-label">Mileage</label><input class="form-input" type="number" placeholder="e.g. 214180"></div>
+      </div>
+      <div class="form-row"><label class="form-label">VIN</label><input class="form-input" placeholder="17-character VIN"></div>
+      <div class="form-row-2">
+        <div class="form-row"><label class="form-label">Last PM Date</label><input class="form-input" type="date"></div>
+        <div class="form-row"><label class="form-label">Next PM Due</label><input class="form-input" type="date"></div>
+      </div>
+      <div class="form-row"><label class="form-label">Notes</label><textarea class="form-textarea" placeholder="Any notes about this truck…"></textarea></div>
+    </div>
+    <div class="modal__footer">
+      <button class="btn btn--secondary" data-close-modal>Cancel</button>
+      <button class="btn btn--primary" id="saveTruckBtn"><i class="fas fa-check"></i> Save Truck</button>
+    </div>
+  </div>
+</div>
+
+<script src="/app/js/mock-data.js"></script>
+<script src="/app/js/app-components.js"></script>
+<script>
+  let activeFilter = 'all';
+  let searchVal = '';
+
+  function renderTable() {
+    const data = TRUCKS.filter(t => {
+      const matchFilter = activeFilter === 'all' || t.status === activeFilter;
+      const q = searchVal.toLowerCase();
+      const matchSearch = !q || t.unit.includes(q) || t.make.toLowerCase().includes(q) || t.model.toLowerCase().includes(q) || t.owner.toLowerCase().includes(q);
+      return matchFilter && matchSearch;
+    });
+    document.getElementById('truckCount').textContent = `${data.length} unit${data.length!==1?'s':''}`;
+    const pmDueStyle = (s) => s === 'PM Due' ? 'background:rgba(230,81,0,.06)' : '';
+    document.getElementById('truckTable').innerHTML = data.length ? data.map(t => `
+      <tr style="${pmDueStyle(t.status)}">
+        <td class="td-bold" style="font-size:.9rem">Unit ${t.unit}</td>
+        <td class="td-primary">${t.year} ${t.make} ${t.model}</td>
+        <td class="td-mono td-muted">${t.vin}</td>
+        <td>${t.owner}</td>
+        <td style="font-weight:600">${t.mileage}</td>
+        <td class="td-muted">${t.lastPM}</td>
+        <td class="${t.status==='PM Due'?'td-red':'td-muted'}">${t.nextPM}</td>
+        <td>${chip(t.status)}</td>
+        <td class="td-actions">
+          <button class="btn btn--ghost btn--sm btn--icon" title="History"><i class="fas fa-history"></i></button>
+          <button class="btn btn--ghost btn--sm btn--icon" title="Edit"><i class="fas fa-pencil-alt"></i></button>
+          <button class="btn btn--primary btn--sm" onclick="showToast('New WO created for this truck','success')">New WO</button>
+        </td>
+      </tr>
+    `).join('') : `<tr><td colspan="9"><div class="empty-state"><div class="empty-state__icon"><i class="fas fa-truck"></i></div><div class="empty-state__title">No trucks found</div></div></td></tr>`;
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    renderTable();
+    document.getElementById('truckFilterTabs').addEventListener('click', e => {
+      const btn = e.target.closest('.filter-tab'); if (!btn) return;
+      document.querySelectorAll('#truckFilterTabs .filter-tab').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active'); activeFilter = btn.dataset.filter; renderTable();
+    });
+    document.getElementById('truckSearch').addEventListener('input', e => { searchVal = e.target.value; renderTable(); });
+    document.getElementById('saveTruckBtn').addEventListener('click', () => {
+      closeModal('addTruckModal');
+      showToast('Truck added to fleet records!', 'success');
+    });
+  });
+</script>
+</body>
+</html>

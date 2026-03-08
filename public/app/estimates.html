@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Estimates | Alex Road Service Ops</title>
+  <link rel="stylesheet" href="/app/css/app.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+</head>
+<body class="app-body">
+<div id="sidebar-placeholder"></div>
+<main class="app-main">
+  <div id="topbar-placeholder" data-title="Estimates"></div>
+  <div class="app-content">
+
+    <div class="page-header">
+      <div>
+        <div class="page-header__title">Estimates</div>
+        <div class="page-header__sub">Generate and track service estimates before work begins</div>
+      </div>
+      <div class="page-header__actions">
+        <button class="btn btn--secondary btn--sm"><i class="fas fa-download"></i> Export</button>
+        <button class="btn btn--primary" onclick="openModal('createEstModal')"><i class="fas fa-plus"></i> New Estimate</button>
+      </div>
+    </div>
+
+    <!-- KPI Row -->
+    <div class="kpi-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:18px">
+      <div class="kpi-card">
+        <div class="kpi-card__row">
+          <div><div class="kpi-card__label">Total Estimates</div><div class="kpi-card__value">6</div></div>
+          <div class="kpi-card__icon blue"><i class="fas fa-file-alt"></i></div>
+        </div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-card__row">
+          <div><div class="kpi-card__label">Pending</div><div class="kpi-card__value amber">2</div></div>
+          <div class="kpi-card__icon amber"><i class="fas fa-clock"></i></div>
+        </div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-card__row">
+          <div><div class="kpi-card__label">Approved</div><div class="kpi-card__value green">3</div></div>
+          <div class="kpi-card__icon green"><i class="fas fa-check-circle"></i></div>
+        </div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-card__row">
+          <div><div class="kpi-card__label">Est. Value (Pending)</div><div class="kpi-card__value">$1,580</div></div>
+          <div class="kpi-card__icon blue"><i class="fas fa-dollar-sign"></i></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Filter Bar -->
+    <div class="filter-bar">
+      <div class="filter-tabs" id="estFilterTabs">
+        <button class="filter-tab active" data-filter="all">All</button>
+        <button class="filter-tab" data-filter="Pending">Pending</button>
+        <button class="filter-tab" data-filter="Approved">Approved</button>
+        <button class="filter-tab" data-filter="Declined">Declined</button>
+      </div>
+      <div class="filter-search">
+        <i class="fas fa-search"></i>
+        <input type="text" id="estSearch" placeholder="Search by customer or EST #…">
+      </div>
+      <span class="filter-count" id="estCount"></span>
+    </div>
+
+    <!-- Table -->
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>EST #</th><th>Date</th><th>Customer</th><th>Truck</th>
+            <th>Description</th><th>Labor</th><th>Parts</th><th>Total</th><th>Status</th><th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="estTable"></tbody>
+      </table>
+    </div>
+
+  </div>
+</main>
+
+<!-- Create Estimate Modal -->
+<div class="modal-overlay" id="createEstModal">
+  <div class="modal" style="max-width:580px">
+    <div class="modal__header">
+      <div class="modal__title">New Estimate</div>
+      <button class="modal__close" data-close-modal><i class="fas fa-times"></i></button>
+    </div>
+    <div class="modal__body">
+      <div class="form-row-2">
+        <div class="form-row">
+          <label class="form-label">Customer *</label>
+          <select class="form-select">
+            <option value="">Select customer…</option>
+            <option>Reid Trucking LLC</option>
+            <option>Lopez Distribution</option>
+            <option>James Construction</option>
+            <option>Travis Cooper</option>
+            <option>Linda Gomez</option>
+            <option>WashEx Logistics</option>
+            <option>Kim Brothers Inc.</option>
+          </select>
+        </div>
+        <div class="form-row">
+          <label class="form-label">Truck / Unit *</label>
+          <select class="form-select">
+            <option value="">Select truck…</option>
+            <option>Unit 101 · Freightliner Cascadia</option>
+            <option>Unit 205 · Kenworth T680</option>
+            <option>Unit 310 · Peterbilt 579</option>
+            <option>Unit 007 · International LT</option>
+            <option>Unit 414 · Volvo VNL 760</option>
+            <option>Unit 512 · Mack Anthem</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row"><label class="form-label">Work Description *</label><textarea class="form-textarea" placeholder="Describe the work to estimate…"></textarea></div>
+      <div class="form-row-2">
+        <div class="form-row"><label class="form-label">Labor Estimate ($)</label><input class="form-input" type="number" placeholder="0.00"></div>
+        <div class="form-row"><label class="form-label">Parts Estimate ($)</label><input class="form-input" type="number" placeholder="0.00"></div>
+      </div>
+      <div class="form-row"><label class="form-label">Notes</label><textarea class="form-textarea" placeholder="Any additional notes or conditions…"></textarea></div>
+    </div>
+    <div class="modal__footer">
+      <button class="btn btn--secondary" data-close-modal>Cancel</button>
+      <button class="btn btn--primary" id="saveEstBtn"><i class="fas fa-check"></i> Create Estimate</button>
+    </div>
+  </div>
+</div>
+
+<script src="/app/js/mock-data.js"></script>
+<script src="/app/js/app-components.js"></script>
+<script>
+  let activeFilter = 'all', searchVal = '';
+
+  function renderTable() {
+    const data = ESTIMATES.filter(e => {
+      const matchFilter = activeFilter === 'all' || e.status === activeFilter;
+      const q = searchVal.toLowerCase();
+      const matchSearch = !q || e.id.toLowerCase().includes(q) || e.customer.toLowerCase().includes(q);
+      return matchFilter && matchSearch;
+    });
+    document.getElementById('estCount').textContent = `${data.length} estimate${data.length!==1?'s':''}`;
+    document.getElementById('estTable').innerHTML = data.length ? data.map(e => `
+      <tr>
+        <td class="td-mono td-bold">${e.id}</td>
+        <td class="td-muted">${e.date}</td>
+        <td class="td-primary">${e.customer}</td>
+        <td class="td-muted" style="font-size:.76rem">${e.truck}</td>
+        <td style="font-size:.8rem;color:var(--steel);max-width:200px">${e.desc}</td>
+        <td style="text-align:right">$${e.labor.toLocaleString()}</td>
+        <td style="text-align:right">$${e.parts.toLocaleString()}</td>
+        <td style="text-align:right;font-weight:700">${fmt$(e.total)}</td>
+        <td>${chip(e.status)}</td>
+        <td class="td-actions">
+          <button class="btn btn--ghost btn--sm btn--icon"><i class="fas fa-print"></i></button>
+          <button class="btn btn--ghost btn--sm btn--icon"><i class="fas fa-pencil-alt"></i></button>
+          ${e.status==='Approved' ? `<button class="btn btn--primary btn--sm" onclick="showToast('WO created from estimate','success')">→ WO</button>` : ''}
+          ${e.status==='Pending' ? `<button class="btn btn--secondary btn--sm" onclick="showToast('Estimate sent to customer','info')"><i class="fas fa-paper-plane"></i></button>` : ''}
+        </td>
+      </tr>
+    `).join('') : `<tr><td colspan="10"><div class="empty-state"><div class="empty-state__icon"><i class="fas fa-file-alt"></i></div><div class="empty-state__title">No estimates found</div></div></td></tr>`;
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    renderTable();
+    document.getElementById('estFilterTabs').addEventListener('click', e => {
+      const btn = e.target.closest('.filter-tab'); if (!btn) return;
+      document.querySelectorAll('#estFilterTabs .filter-tab').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active'); activeFilter = btn.dataset.filter; renderTable();
+    });
+    document.getElementById('estSearch').addEventListener('input', e => { searchVal = e.target.value; renderTable(); });
+    document.getElementById('saveEstBtn').addEventListener('click', () => {
+      closeModal('createEstModal');
+      showToast('Estimate created and saved!', 'success');
+    });
+  });
+</script>
+</body>
+</html>

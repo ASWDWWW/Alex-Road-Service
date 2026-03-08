@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Customers | Alex Road Service Ops</title>
+  <link rel="stylesheet" href="/app/css/app.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+</head>
+<body class="app-body">
+<div id="sidebar-placeholder"></div>
+<main class="app-main">
+  <div id="topbar-placeholder" data-title="Customers"></div>
+  <div class="app-content">
+
+    <div class="page-header">
+      <div>
+        <div class="page-header__title">Customers</div>
+        <div class="page-header__sub">Manage customer accounts and service history</div>
+      </div>
+      <div class="page-header__actions">
+        <button class="btn btn--secondary btn--sm"><i class="fas fa-download"></i> Export</button>
+        <button class="btn btn--primary" onclick="openModal('addCustomerModal')"><i class="fas fa-plus"></i> Add Customer</button>
+      </div>
+    </div>
+
+    <!-- KPI Row -->
+    <div class="kpi-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:18px">
+      <div class="kpi-card">
+        <div class="kpi-card__row">
+          <div><div class="kpi-card__label">Total Customers</div><div class="kpi-card__value">8</div></div>
+          <div class="kpi-card__icon blue"><i class="fas fa-users"></i></div>
+        </div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-card__row">
+          <div><div class="kpi-card__label">Fleet Accounts</div><div class="kpi-card__value blue">5</div></div>
+          <div class="kpi-card__icon blue"><i class="fas fa-building"></i></div>
+        </div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-card__row">
+          <div><div class="kpi-card__label">Owner-Operators</div><div class="kpi-card__value">3</div></div>
+          <div class="kpi-card__icon amber"><i class="fas fa-user"></i></div>
+        </div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-card__row">
+          <div><div class="kpi-card__label">Active</div><div class="kpi-card__value green">7</div></div>
+          <div class="kpi-card__icon green"><i class="fas fa-check-circle"></i></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Filter Bar -->
+    <div class="filter-bar">
+      <div class="filter-tabs" id="custFilterTabs">
+        <button class="filter-tab active" data-filter="all">All</button>
+        <button class="filter-tab" data-filter="Fleet">Fleet</button>
+        <button class="filter-tab" data-filter="Owner-Op">Owner-Op</button>
+        <button class="filter-tab" data-filter="Inactive">Inactive</button>
+      </div>
+      <div class="filter-search">
+        <i class="fas fa-search"></i>
+        <input type="text" id="custSearch" placeholder="Search customers…">
+      </div>
+      <span class="filter-count" id="custCount"></span>
+    </div>
+
+    <!-- Table -->
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th><th>Name</th><th>Company</th><th>Phone</th><th>Type</th>
+            <th>Trucks</th><th>Last Service</th><th>Total Spent</th><th>Status</th><th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="custTable"></tbody>
+      </table>
+    </div>
+
+  </div>
+</main>
+
+<!-- Add Customer Modal -->
+<div class="modal-overlay" id="addCustomerModal">
+  <div class="modal">
+    <div class="modal__header">
+      <div class="modal__title">Add Customer</div>
+      <button class="modal__close" data-close-modal><i class="fas fa-times"></i></button>
+    </div>
+    <div class="modal__body">
+      <div class="form-row-2">
+        <div class="form-row"><label class="form-label">First Name *</label><input class="form-input" placeholder="First name"></div>
+        <div class="form-row"><label class="form-label">Last Name *</label><input class="form-input" placeholder="Last name"></div>
+      </div>
+      <div class="form-row"><label class="form-label">Company Name</label><input class="form-input" placeholder="Optional — leave blank for owner-operators"></div>
+      <div class="form-row-2">
+        <div class="form-row"><label class="form-label">Phone *</label><input class="form-input" type="tel" placeholder="(___) ___-____"></div>
+        <div class="form-row"><label class="form-label">Email</label><input class="form-input" type="email" placeholder="email@example.com"></div>
+      </div>
+      <div class="form-row-2">
+        <div class="form-row">
+          <label class="form-label">Customer Type</label>
+          <select class="form-select">
+            <option>Fleet</option>
+            <option>Owner-Op</option>
+          </select>
+        </div>
+        <div class="form-row"><label class="form-label">Number of Trucks</label><input class="form-input" type="number" placeholder="1" min="1"></div>
+      </div>
+      <div class="form-row"><label class="form-label">Notes</label><textarea class="form-textarea" placeholder="Any notes about this customer…"></textarea></div>
+    </div>
+    <div class="modal__footer">
+      <button class="btn btn--secondary" data-close-modal>Cancel</button>
+      <button class="btn btn--primary" id="saveCustomerBtn"><i class="fas fa-check"></i> Save Customer</button>
+    </div>
+  </div>
+</div>
+
+<script src="/app/js/mock-data.js"></script>
+<script src="/app/js/app-components.js"></script>
+<script>
+  let activeFilter = 'all';
+  let searchVal = '';
+
+  function renderTable() {
+    const data = CUSTOMERS.filter(c => {
+      const matchFilter = activeFilter === 'all' || c.type === activeFilter || c.status === activeFilter;
+      const q = searchVal.toLowerCase();
+      const matchSearch = !q || c.name.toLowerCase().includes(q) || (c.company||'').toLowerCase().includes(q) || c.phone.includes(q);
+      return matchFilter && matchSearch;
+    });
+    document.getElementById('custCount').textContent = `${data.length} result${data.length!==1?'s':''}`;
+    document.getElementById('custTable').innerHTML = data.length ? data.map(c => `
+      <tr>
+        <td class="td-mono td-muted">${c.id}</td>
+        <td class="td-primary">${c.name}</td>
+        <td class="td-muted">${c.company}</td>
+        <td><a href="tel:${c.phone.replace(/\D/g,'')}" style="color:var(--red);font-weight:600">${c.phone}</a></td>
+        <td>${chip(c.type)}</td>
+        <td style="text-align:center;font-weight:600">${c.trucks}</td>
+        <td class="td-muted">${c.lastService}</td>
+        <td class="td-bold">${c.spent}</td>
+        <td>${chip(c.status)}</td>
+        <td class="td-actions">
+          <button class="btn btn--ghost btn--sm btn--icon" title="View"><i class="fas fa-eye"></i></button>
+          <button class="btn btn--ghost btn--sm btn--icon" title="Edit"><i class="fas fa-pencil-alt"></i></button>
+        </td>
+      </tr>
+    `).join('') : `<tr><td colspan="10"><div class="empty-state"><div class="empty-state__icon"><i class="fas fa-users"></i></div><div class="empty-state__title">No customers found</div><div class="empty-state__desc">Try a different filter or search term.</div></div></td></tr>`;
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    renderTable();
+
+    document.getElementById('custFilterTabs').addEventListener('click', e => {
+      const btn = e.target.closest('.filter-tab');
+      if (!btn) return;
+      document.querySelectorAll('#custFilterTabs .filter-tab').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      activeFilter = btn.dataset.filter;
+      renderTable();
+    });
+
+    document.getElementById('custSearch').addEventListener('input', e => {
+      searchVal = e.target.value;
+      renderTable();
+    });
+
+    document.getElementById('saveCustomerBtn').addEventListener('click', () => {
+      closeModal('addCustomerModal');
+      showToast('Customer added successfully!', 'success');
+    });
+  });
+</script>
+</body>
+</html>

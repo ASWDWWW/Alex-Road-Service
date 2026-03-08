@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Payments | Alex Road Service Ops</title>
+  <link rel="stylesheet" href="/app/css/app.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+</head>
+<body class="app-body">
+<div id="sidebar-placeholder"></div>
+<main class="app-main">
+  <div id="topbar-placeholder" data-title="Payments"></div>
+  <div class="app-content">
+
+    <div class="page-header">
+      <div>
+        <div class="page-header__title">Payments</div>
+        <div class="page-header__sub">Track all received payments and payment methods</div>
+      </div>
+      <div class="page-header__actions">
+        <button class="btn btn--secondary btn--sm"><i class="fas fa-download"></i> Export</button>
+        <button class="btn btn--primary" onclick="openModal('recordPayModal')"><i class="fas fa-plus"></i> Record Payment</button>
+      </div>
+    </div>
+
+    <!-- KPI Row -->
+    <div class="kpi-grid" style="margin-bottom:18px">
+      <div class="kpi-card">
+        <div class="kpi-card__row">
+          <div><div class="kpi-card__label">Total Received (MTD)</div><div class="kpi-card__value green">$2,720</div></div>
+          <div class="kpi-card__icon green"><i class="fas fa-dollar-sign"></i></div>
+        </div>
+        <div class="kpi-card__trend"><i class="fas fa-arrow-up up"></i><span>6 payments this month</span></div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-card__row">
+          <div><div class="kpi-card__label">Card Payments</div><div class="kpi-card__value">$1,990</div></div>
+          <div class="kpi-card__icon blue"><i class="fas fa-credit-card"></i></div>
+        </div>
+        <div class="kpi-card__trend"><span>3 transactions</span></div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-card__row">
+          <div><div class="kpi-card__label">Check Payments</div><div class="kpi-card__value">$1,250</div></div>
+          <div class="kpi-card__icon amber"><i class="fas fa-money-check"></i></div>
+        </div>
+        <div class="kpi-card__trend"><span>2 transactions</span></div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-card__row">
+          <div><div class="kpi-card__label">Cash Payments</div><div class="kpi-card__value">$80</div></div>
+          <div class="kpi-card__icon green"><i class="fas fa-money-bill-wave"></i></div>
+        </div>
+        <div class="kpi-card__trend"><span>1 transaction</span></div>
+      </div>
+    </div>
+
+    <!-- Filter Bar -->
+    <div class="filter-bar">
+      <div class="filter-tabs" id="payFilterTabs">
+        <button class="filter-tab active" data-filter="all">All</button>
+        <button class="filter-tab" data-filter="Card">Card</button>
+        <button class="filter-tab" data-filter="Check">Check</button>
+        <button class="filter-tab" data-filter="Cash">Cash</button>
+      </div>
+      <div class="filter-search">
+        <i class="fas fa-search"></i>
+        <input type="text" id="paySearch" placeholder="Search by customer or invoice…">
+      </div>
+      <span class="filter-count" id="payCount"></span>
+    </div>
+
+    <!-- Table -->
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Payment #</th><th>Date</th><th>Customer</th><th>Invoice #</th>
+            <th style="text-align:right">Amount</th><th>Method</th><th>Status</th><th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="payTable"></tbody>
+      </table>
+    </div>
+
+  </div>
+</main>
+
+<!-- Record Payment Modal -->
+<div class="modal-overlay" id="recordPayModal">
+  <div class="modal">
+    <div class="modal__header">
+      <div class="modal__title">Record Payment</div>
+      <button class="modal__close" data-close-modal><i class="fas fa-times"></i></button>
+    </div>
+    <div class="modal__body">
+      <div class="form-row-2">
+        <div class="form-row">
+          <label class="form-label">Customer *</label>
+          <select class="form-select">
+            <option value="">Select customer…</option>
+            <option>Reid Trucking LLC</option>
+            <option>Lopez Distribution</option>
+            <option>James Construction</option>
+            <option>Travis Cooper</option>
+            <option>Linda Gomez</option>
+            <option>WashEx Logistics</option>
+            <option>Kim Brothers Inc.</option>
+          </select>
+        </div>
+        <div class="form-row">
+          <label class="form-label">Invoice # *</label>
+          <select class="form-select">
+            <option value="">Select invoice…</option>
+            <option>INV-2026-010 · Nadia Kim · $255</option>
+            <option>INV-2026-009 · Lopez Distribution · $420</option>
+            <option>INV-2026-004 · Reid Trucking · $160 (OVERDUE)</option>
+            <option>INV-2026-003 · James Construction · $1,250 (OVERDUE)</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row-2">
+        <div class="form-row"><label class="form-label">Amount ($) *</label><input class="form-input" type="number" placeholder="0.00"></div>
+        <div class="form-row">
+          <label class="form-label">Payment Method *</label>
+          <select class="form-select">
+            <option>Card</option>
+            <option>Check</option>
+            <option>Cash</option>
+            <option>ACH / Bank Transfer</option>
+            <option>Zelle</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row-2">
+        <div class="form-row"><label class="form-label">Payment Date</label><input class="form-input" type="date"></div>
+        <div class="form-row"><label class="form-label">Reference / Check #</label><input class="form-input" placeholder="Optional"></div>
+      </div>
+      <div class="form-row"><label class="form-label">Notes</label><textarea class="form-textarea" rows="2" placeholder="Any notes about this payment…"></textarea></div>
+    </div>
+    <div class="modal__footer">
+      <button class="btn btn--secondary" data-close-modal>Cancel</button>
+      <button class="btn btn--primary" id="savePayBtn"><i class="fas fa-check"></i> Record Payment</button>
+    </div>
+  </div>
+</div>
+
+<script src="/app/js/mock-data.js"></script>
+<script src="/app/js/app-components.js"></script>
+<script>
+  let activeFilter = 'all', searchVal = '';
+
+  const METHOD_ICON = { Card: 'fa-credit-card', Check: 'fa-money-check', Cash: 'fa-money-bill-wave' };
+
+  function renderTable() {
+    const data = PAYMENTS.filter(p => {
+      const matchFilter = activeFilter === 'all' || p.method === activeFilter;
+      const q = searchVal.toLowerCase();
+      const matchSearch = !q || p.customer.toLowerCase().includes(q) || p.invoice.toLowerCase().includes(q);
+      return matchFilter && matchSearch;
+    });
+    document.getElementById('payCount').textContent = `${data.length} payment${data.length!==1?'s':''}`;
+    document.getElementById('payTable').innerHTML = data.length ? data.map(p => `
+      <tr>
+        <td class="td-mono td-bold">${p.id}</td>
+        <td class="td-muted">${p.date}</td>
+        <td class="td-primary">${p.customer}</td>
+        <td class="td-mono td-muted">${p.invoice}</td>
+        <td style="text-align:right;font-weight:700;color:#059669">${p.amount}</td>
+        <td><span style="display:inline-flex;align-items:center;gap:6px;font-size:.8rem;font-weight:600"><i class="fas ${METHOD_ICON[p.method]||'fa-dollar-sign'}" style="color:var(--warm-gray)"></i>${p.method}</span></td>
+        <td>${chip(p.status)}</td>
+        <td class="td-actions">
+          <button class="btn btn--ghost btn--sm btn--icon" onclick="showToast('Receipt printed/downloaded','info')"><i class="fas fa-receipt"></i></button>
+          <button class="btn btn--ghost btn--sm btn--icon" title="View Invoice"><i class="fas fa-file-invoice"></i></button>
+        </td>
+      </tr>
+    `).join('') : `<tr><td colspan="8"><div class="empty-state"><div class="empty-state__icon"><i class="fas fa-credit-card"></i></div><div class="empty-state__title">No payments found</div></div></td></tr>`;
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    renderTable();
+    document.getElementById('payFilterTabs').addEventListener('click', e => {
+      const btn = e.target.closest('.filter-tab'); if (!btn) return;
+      document.querySelectorAll('#payFilterTabs .filter-tab').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active'); activeFilter = btn.dataset.filter; renderTable();
+    });
+    document.getElementById('paySearch').addEventListener('input', e => { searchVal = e.target.value; renderTable(); });
+    document.getElementById('savePayBtn').addEventListener('click', () => {
+      closeModal('recordPayModal');
+      showToast('Payment recorded and invoice marked as paid!', 'success');
+    });
+  });
+</script>
+</body>
+</html>

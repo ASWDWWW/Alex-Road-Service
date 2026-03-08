@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Work Orders | Alex Road Service Ops</title>
+  <link rel="stylesheet" href="/app/css/app.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+</head>
+<body class="app-body">
+<div id="sidebar-placeholder"></div>
+<main class="app-main">
+  <div id="topbar-placeholder" data-title="Work Orders"></div>
+  <div class="app-content">
+
+    <div class="page-header">
+      <div>
+        <div class="page-header__title">Work Orders</div>
+        <div class="page-header__sub">Create, track, and close all repair jobs</div>
+      </div>
+      <div class="page-header__actions">
+        <button class="btn btn--secondary btn--sm"><i class="fas fa-download"></i> Export</button>
+        <button class="btn btn--primary" onclick="openModal('createWoModal')"><i class="fas fa-plus"></i> Create Work Order</button>
+      </div>
+    </div>
+
+    <!-- KPI Row -->
+    <div class="kpi-grid" style="margin-bottom:18px">
+      <div class="kpi-card">
+        <div class="kpi-card__row">
+          <div><div class="kpi-card__label">Open</div><div class="kpi-card__value">1</div></div>
+          <div class="kpi-card__icon blue"><i class="fas fa-clipboard"></i></div>
+        </div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-card__row">
+          <div><div class="kpi-card__label">In Progress</div><div class="kpi-card__value red">1</div></div>
+          <div class="kpi-card__icon red"><i class="fas fa-tools"></i></div>
+        </div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-card__row">
+          <div><div class="kpi-card__label">Waiting Parts</div><div class="kpi-card__value amber">1</div></div>
+          <div class="kpi-card__icon amber"><i class="fas fa-boxes"></i></div>
+        </div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-card__row">
+          <div><div class="kpi-card__label">Completed (MTD)</div><div class="kpi-card__value green">6</div></div>
+          <div class="kpi-card__icon green"><i class="fas fa-check-double"></i></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Filter Bar -->
+    <div class="filter-bar">
+      <div class="filter-tabs" id="woFilterTabs">
+        <button class="filter-tab active" data-filter="all">All</button>
+        <button class="filter-tab" data-filter="Open">Open</button>
+        <button class="filter-tab" data-filter="In Progress">In Progress</button>
+        <button class="filter-tab" data-filter="Waiting Parts">Waiting Parts</button>
+        <button class="filter-tab" data-filter="Completed">Completed</button>
+        <button class="filter-tab" data-filter="Invoiced">Invoiced</button>
+      </div>
+      <div class="filter-search">
+        <i class="fas fa-search"></i>
+        <input type="text" id="woSearch" placeholder="Search WO #, customer…">
+      </div>
+      <span class="filter-count" id="woCount"></span>
+    </div>
+
+    <!-- Table -->
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>WO #</th><th>Date</th><th>Customer</th><th>Truck</th>
+            <th>Description</th><th>Tech</th><th>Labor</th><th>Parts</th><th>Total</th><th>Status</th><th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="woTable"></tbody>
+      </table>
+    </div>
+
+  </div>
+</main>
+
+<!-- Create WO Modal -->
+<div class="modal-overlay" id="createWoModal">
+  <div class="modal" style="max-width:600px">
+    <div class="modal__header">
+      <div class="modal__title">Create Work Order</div>
+      <button class="modal__close" data-close-modal><i class="fas fa-times"></i></button>
+    </div>
+    <div class="modal__body">
+      <div class="form-row-2">
+        <div class="form-row">
+          <label class="form-label">Customer *</label>
+          <select class="form-select">
+            <option value="">Select customer…</option>
+            <option>Reid Trucking LLC</option>
+            <option>Lopez Distribution</option>
+            <option>James Construction</option>
+            <option>Travis Cooper</option>
+            <option>Linda Gomez</option>
+            <option>WashEx Logistics</option>
+            <option>Kim Brothers Inc.</option>
+          </select>
+        </div>
+        <div class="form-row">
+          <label class="form-label">Truck / Unit *</label>
+          <select class="form-select">
+            <option value="">Select truck…</option>
+            <option>Unit 101 · Freightliner Cascadia</option>
+            <option>Unit 205 · Kenworth T680</option>
+            <option>Unit 310 · Peterbilt 579</option>
+            <option>Unit 007 · International LT</option>
+            <option>Unit 414 · Volvo VNL 760</option>
+            <option>Unit 512 · Mack Anthem</option>
+            <option>Unit 088 · Freightliner Columbia</option>
+            <option>Unit 333 · Kenworth W990</option>
+            <option>Unit 601 · Western Star 5700XE</option>
+            <option>Unit 777 · Peterbilt 389</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row-2">
+        <div class="form-row">
+          <label class="form-label">Service Type *</label>
+          <select class="form-select" id="woServiceType">
+            <option value="">Select service…</option>
+            <option>Air Brake Repair</option>
+            <option>Brake Adjustment</option>
+            <option>Air System Repair</option>
+            <option>Air Dryer Service</option>
+            <option>Electrical Repair</option>
+            <option>Starter Replacement</option>
+            <option>Alternator Replacement</option>
+            <option>Fuel Filter Service</option>
+            <option>DEF System Service</option>
+            <option>Fuel Delivery</option>
+            <option>Hydraulic Hose Repair</option>
+            <option>Jump Start</option>
+            <option>Battery Replacement</option>
+            <option>Radiator Repair</option>
+            <option>Preventive Maintenance</option>
+            <option>DOT Inspection</option>
+            <option>Clutch Adjustment</option>
+            <option>Engine Diagnostic</option>
+            <option>Other</option>
+          </select>
+        </div>
+        <div class="form-row">
+          <label class="form-label">Assigned Tech</label>
+          <select class="form-select">
+            <option>Mike Santos</option>
+            <option>Jose Rivera</option>
+            <option>Tom Ellis</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row"><label class="form-label">Description / Complaint *</label><textarea class="form-textarea" placeholder="Describe the issue or work to be done…"></textarea></div>
+      <div class="form-row-2">
+        <div class="form-row"><label class="form-label">Estimated Labor ($)</label><input class="form-input" type="number" placeholder="0.00"></div>
+        <div class="form-row"><label class="form-label">Estimated Parts ($)</label><input class="form-input" type="number" placeholder="0.00"></div>
+      </div>
+      <div class="form-row-2">
+        <div class="form-row">
+          <label class="form-label">Status</label>
+          <select class="form-select">
+            <option>Open</option>
+            <option>In Progress</option>
+            <option>Waiting Parts</option>
+          </select>
+        </div>
+        <div class="form-row"><label class="form-label">Date</label><input class="form-input" type="date"></div>
+      </div>
+    </div>
+    <div class="modal__footer">
+      <button class="btn btn--secondary" data-close-modal>Cancel</button>
+      <button class="btn btn--primary" id="saveWoBtn"><i class="fas fa-check"></i> Create WO</button>
+    </div>
+  </div>
+</div>
+
+<script src="/app/js/mock-data.js"></script>
+<script src="/app/js/app-components.js"></script>
+<script>
+  let activeFilter = 'all';
+  let searchVal = '';
+
+  function renderTable() {
+    const data = WORK_ORDERS.filter(w => {
+      const matchFilter = activeFilter === 'all' || w.status === activeFilter;
+      const q = searchVal.toLowerCase();
+      const matchSearch = !q || w.id.toLowerCase().includes(q) || w.customer.toLowerCase().includes(q) || w.tech.toLowerCase().includes(q);
+      return matchFilter && matchSearch;
+    });
+    document.getElementById('woCount').textContent = `${data.length} order${data.length!==1?'s':''}`;
+    document.getElementById('woTable').innerHTML = data.length ? data.map(w => `
+      <tr>
+        <td class="td-mono td-bold" style="white-space:nowrap">${w.id}</td>
+        <td class="td-muted" style="white-space:nowrap">${w.date}</td>
+        <td class="td-primary">${w.customer}</td>
+        <td class="td-muted" style="font-size:.76rem;max-width:140px;line-height:1.4">${w.truck}</td>
+        <td style="font-size:.8rem;max-width:200px;color:var(--steel)">${w.desc}</td>
+        <td class="td-muted">${w.tech}</td>
+        <td style="text-align:right">$${w.labor.toLocaleString()}</td>
+        <td style="text-align:right">$${w.parts.toLocaleString()}</td>
+        <td style="text-align:right;font-weight:700">${fmt$(w.total)}</td>
+        <td>${chip(w.status)}</td>
+        <td class="td-actions">
+          <button class="btn btn--ghost btn--sm btn--icon" title="View"><i class="fas fa-eye"></i></button>
+          <button class="btn btn--ghost btn--sm btn--icon" title="Edit"><i class="fas fa-pencil-alt"></i></button>
+          ${w.status==='Completed' ? `<button class="btn btn--primary btn--sm" onclick="showToast('Invoice created for this WO','success')">Invoice</button>` : ''}
+        </td>
+      </tr>
+    `).join('') : `<tr><td colspan="11"><div class="empty-state"><div class="empty-state__icon"><i class="fas fa-clipboard-list"></i></div><div class="empty-state__title">No work orders found</div></div></td></tr>`;
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    renderTable();
+    document.getElementById('woFilterTabs').addEventListener('click', e => {
+      const btn = e.target.closest('.filter-tab'); if (!btn) return;
+      document.querySelectorAll('#woFilterTabs .filter-tab').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active'); activeFilter = btn.dataset.filter; renderTable();
+    });
+    document.getElementById('woSearch').addEventListener('input', e => { searchVal = e.target.value; renderTable(); });
+    document.getElementById('saveWoBtn').addEventListener('click', () => {
+      closeModal('createWoModal');
+      showToast('Work order created successfully!', 'success');
+    });
+  });
+</script>
+</body>
+</html>
