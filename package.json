@@ -1,0 +1,22 @@
+{
+  "name": "alex-road-service",
+  "private": true,
+  "description": "Alex Road Service website and operations platform",
+  "scripts": {
+    "serve": "npx --yes serve public -l 3000",
+    "firebase": "firebase",
+    "login": "firebase login",
+    "deploy": "firebase deploy --only hosting,functions,firestore:indexes,firestore:rules",
+    "deploy:hosting": "firebase deploy --only hosting:launchpage-alex-roadservice",
+    "deploy:rules": "firebase deploy --only firestore:rules,firestore:indexes",
+    "deploy:functions": "firebase deploy --only functions",
+    "deploy:artifacts:cleanup": "firebase functions:artifacts:setpolicy --location us-central1 --days 1 --force",
+    "bootstrap": "node scripts/call-bootstrap.js"
+  },
+  "dependencies": {
+    "firebase": "^11.0.0"
+  },
+  "devDependencies": {
+    "firebase-tools": "^13.0.0"
+  }
+}

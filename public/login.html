@@ -3,6 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <title>Staff Login | Alex Road Service Operations Platform</title>
   <meta name="description" content="Secure staff login for the Alex Road Service internal operations platform.">
   <meta name="robots" content="noindex, nofollow">
@@ -15,66 +17,33 @@
     .pass-toggle:hover { color: var(--black); }
     .input-wrap { position: relative; }
     .input-wrap .form-input { padding-right: 44px; }
+    #loginError { display: none; }
+    #loginError.show { display: flex; }
+    #resetSuccess { display: none; }
+    #resetSuccess.show { display: flex; }
   </style>
 </head>
 <body>
 
-  <!-- ═══ LOGIN SPLIT LAYOUT ═══ -->
   <div class="login-wrap">
-
-    <!-- Left Brand Panel -->
     <div class="login-left">
       <div class="login-left__content">
         <a href="/" style="display:inline-flex;align-items:center;gap:10px;font-family:var(--font-head);font-size:1.6rem;color:var(--white);letter-spacing:.04em;margin-bottom:48px;text-decoration:none">
           <div style="width:34px;height:34px;background:var(--red);border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:1rem">A</div>
           ALEX ROAD SERVICE
         </a>
-
         <div style="font-family:var(--font-head);font-size:clamp(2.5rem,5vw,4rem);color:var(--white);line-height:1;margin-bottom:16px">
           OPERATIONS<br><span style="color:var(--red)">PLATFORM</span>
         </div>
         <p style="color:rgba(255,255,255,.55);font-size:0.95rem;max-width:380px;line-height:1.75;margin-bottom:48px">
-          Your secure hub for managing customers, trucks, work orders, estimates, invoices, payments, and inventory — all in one place.
+          Your secure hub for managing customers, trucks, work orders, estimates, invoices, payments, and inventory.
         </p>
-
-        <div class="login-left__features">
-          <div class="login-left__feat">
-            <div class="login-left__feat-icon"><i class="fas fa-clipboard-list"></i></div>
-            <div>
-              <div class="login-left__feat-title">Work Orders &amp; Jobs</div>
-              <div class="login-left__feat-desc">Create, assign, and track repair jobs from open to completed.</div>
-            </div>
-          </div>
-          <div class="login-left__feat">
-            <div class="login-left__feat-icon"><i class="fas fa-file-invoice-dollar"></i></div>
-            <div>
-              <div class="login-left__feat-title">Estimates &amp; Invoices</div>
-              <div class="login-left__feat-desc">Build and send estimates, convert to invoices, track payment status.</div>
-            </div>
-          </div>
-          <div class="login-left__feat">
-            <div class="login-left__feat-icon"><i class="fas fa-truck"></i></div>
-            <div>
-              <div class="login-left__feat-title">Fleet &amp; Customer Records</div>
-              <div class="login-left__feat-desc">Complete service history per customer and per truck unit.</div>
-            </div>
-          </div>
-          <div class="login-left__feat">
-            <div class="login-left__feat-icon"><i class="fas fa-boxes"></i></div>
-            <div>
-              <div class="login-left__feat-title">Parts &amp; Inventory</div>
-              <div class="login-left__feat-desc">Track stock, usage per job, costs, and low inventory alerts.</div>
-            </div>
-          </div>
-        </div>
       </div>
     </div>
 
-    <!-- Right Login Form -->
     <div class="login-right">
       <div class="login-form-wrap">
-
-        <a href="/" style="display:inline-flex;align-items:center;gap:8px;font-size:0.82rem;color:var(--steel);font-weight:600;margin-bottom:40px;transition:color .2s">
+        <a href="/" style="display:inline-flex;align-items:center;gap:8px;font-size:0.82rem;color:var(--steel);font-weight:600;margin-bottom:40px">
           <i class="fas fa-arrow-left"></i> Back to Website
         </a>
 
@@ -82,7 +51,10 @@
         <p class="login-sub">Sign in to the Alex Road Service operations platform.</p>
 
         <div id="loginError" class="alert alert--error" style="margin-bottom:20px">
-          <i class="fas fa-exclamation-circle"></i> <span id="loginErrorMsg">Invalid email or password. Please try again.</span>
+          <i class="fas fa-exclamation-circle"></i> <span id="loginErrorMsg">Invalid email or password.</span>
+        </div>
+        <div id="resetSuccess" class="alert alert--success" style="margin-bottom:20px">
+          <i class="fas fa-check-circle"></i> Password reset email sent. Check your inbox.
         </div>
 
         <form id="loginForm" novalidate>
@@ -99,101 +71,92 @@
               </button>
             </div>
           </div>
-
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px">
             <label style="display:flex;align-items:center;gap:8px;font-size:0.85rem;color:var(--steel);cursor:pointer">
               <input type="checkbox" id="rememberMe" name="remember" style="accent-color:var(--red);width:16px;height:16px">
               Remember me
             </label>
-            <a href="#" style="font-size:0.85rem;color:var(--red);font-weight:600">Forgot password?</a>
+            <a href="#" id="forgotLink" style="font-size:0.85rem;color:var(--red);font-weight:600">Forgot password?</a>
           </div>
-
-          <button type="submit" id="loginBtn" class="btn btn--primary btn--full btn--lg">
-            SIGN IN
-          </button>
+          <button type="submit" id="loginBtn" class="btn btn--primary btn--full btn--lg">SIGN IN</button>
         </form>
 
-        <div class="login-divider">
-          <span>Secure Access</span>
-        </div>
-
+        <div class="login-divider"><span>Secure Access</span></div>
         <div style="background:var(--off-white);border-radius:10px;padding:16px;font-size:0.82rem;color:var(--steel);display:flex;align-items:flex-start;gap:10px">
-          <i class="fas fa-lock" style="color:var(--warm-gray);margin-top:2px;flex-shrink:0"></i>
-          <span>This platform is for authorized Alex Road Service staff only. Unauthorized access attempts are logged. Contact your administrator if you need access.</span>
-        </div>
-
-        <!-- Demo credentials -->
-        <div style="background:#F0FFF4;border:1px solid #A7F3D0;border-radius:8px;padding:14px 16px;margin-top:20px">
-          <div style="font-size:.72rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#065F46;margin-bottom:8px">
-            <i class="fas fa-flask" style="margin-right:5px"></i> Demo Credentials
-          </div>
-          <div style="font-size:.8rem;color:#065F46;display:flex;flex-direction:column;gap:4px">
-            <div><strong>Admin:</strong> admin@alexroadservice.com / Admin123</div>
-            <div><strong>Tech:</strong> tech@alexroadservice.com / Tech123</div>
-            <div><strong>Office:</strong> office@alexroadservice.com / Office123</div>
-          </div>
+          <i class="fas fa-lock" style="color:var(--warm-gray);margin-top:2px"></i>
+          <span>Authorized staff only. Sign in with your Firebase account credentials.</span>
         </div>
       </div>
     </div>
   </div>
 
   <script src="/js/components.js"></script>
-  <script src="/js/main.js"></script>
-
-  <!-- Mock Auth (replace with Firebase Auth when ready) -->
+  <script src="/js/firebase-config.js"></script>
+  <script src="/app/js/utils.js"></script>
+  <script src="/app/js/auth.js"></script>
   <script>
-    const MOCK_USERS = [
-      { email: 'admin@alexroadservice.com', password: 'Admin123', name: 'Alex Rodriguez', role: 'Administrator' },
-      { email: 'tech@alexroadservice.com',  password: 'Tech123',  name: 'Mike Santos',    role: 'Technician'    },
-      { email: 'office@alexroadservice.com',password: 'Office123',name: 'Sarah Torres',   role: 'Office Staff'  },
-    ];
+    const form = document.getElementById('loginForm');
+    const errBox = document.getElementById('loginError');
+    const errMsg = document.getElementById('loginErrorMsg');
 
-    const form     = document.getElementById('loginForm');
-    const errBox   = document.getElementById('loginError');
-    const errMsg   = document.getElementById('loginErrorMsg');
+    (async () => {
+      try {
+        await ARS.Auth.init();
+        if (await ARS.Auth.validateSession()) {
+          window.location.href = '/app/dashboard.html';
+        }
+      } catch (err) {
+        errMsg.textContent = err.message;
+        errBox.classList.add('show');
+      }
+      const params = new URLSearchParams(location.search);
+      if (params.get('error') === 'firebase') {
+        errMsg.textContent = 'Authentication service is unavailable. Contact your administrator.';
+        errBox.classList.add('show');
+      }
+    })();
+    const resetBox = document.getElementById('resetSuccess');
     const loginBtn = document.getElementById('loginBtn');
+    const passInput = document.getElementById('loginPassword');
 
-    /* Password toggle */
-    const passInput  = document.getElementById('loginPassword');
-    const passToggle = document.getElementById('passToggle');
-    const passIcon   = document.getElementById('passToggleIcon');
-    passToggle?.addEventListener('click', () => {
+    document.getElementById('passToggle')?.addEventListener('click', () => {
       const show = passInput.type === 'password';
       passInput.type = show ? 'text' : 'password';
-      passIcon.className = show ? 'fas fa-eye-slash' : 'fas fa-eye';
+      document.getElementById('passToggleIcon').className = show ? 'fas fa-eye-slash' : 'fas fa-eye';
     });
 
-    /* Submit */
-    form?.addEventListener('submit', (e) => {
+    document.getElementById('forgotLink')?.addEventListener('click', async (e) => {
+      e.preventDefault();
+      const email = document.getElementById('loginEmail').value.trim();
+      if (!email) { errMsg.textContent = 'Enter your email first.'; errBox.classList.add('show'); return; }
+      try {
+        await ARS.Auth.resetPassword(email);
+        resetBox.classList.add('show');
+        errBox.classList.remove('show');
+      } catch (err) {
+        errMsg.textContent = err.message;
+        errBox.classList.add('show');
+      }
+    });
+
+    form?.addEventListener('submit', async (e) => {
       e.preventDefault();
       errBox.classList.remove('show');
-
-      const email    = form.elements['email'].value.trim().toLowerCase();
+      resetBox.classList.remove('show');
+      const email = form.elements['email'].value;
       const password = form.elements['password'].value;
-
-      if (!email || !password) {
-        errMsg.textContent = 'Please enter your email and password.';
-        errBox.classList.add('show');
-        return;
-      }
-
-      loginBtn.disabled  = true;
+      const remember = document.getElementById('rememberMe').checked;
+      loginBtn.disabled = true;
       loginBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> SIGNING IN...';
-
-      /* Simulate async check */
-      setTimeout(() => {
-        const user = MOCK_USERS.find(u => u.email === email && u.password === password);
-        if (user) {
-          sessionStorage.setItem('appLoggedIn', '1');
-          sessionStorage.setItem('appUser', JSON.stringify({ name: user.name, role: user.role }));
-          window.location.href = '/app/dashboard.html';
-        } else {
-          errMsg.textContent = 'Invalid email or password. Check the demo credentials below.';
-          errBox.classList.add('show');
-          loginBtn.disabled  = false;
-          loginBtn.innerHTML = 'SIGN IN';
-        }
-      }, 700);
+      try {
+        await ARS.Auth.login(email, password, remember);
+        window.location.href = '/app/dashboard.html';
+      } catch (err) {
+        errMsg.textContent = err.message;
+        errBox.classList.add('show');
+        loginBtn.disabled = false;
+        loginBtn.innerHTML = 'SIGN IN';
+      }
     });
   </script>
 </body>

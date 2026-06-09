@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <title>Settings | Alex Road Service Ops</title>
+  <link rel="stylesheet" href="/app/css/app.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+</head>
+<body class="app-body">
+<div id="sidebar-placeholder"></div>
+<main class="app-main">
+  <div id="topbar-placeholder" data-title="Settings"></div>
+  <div class="app-content">
+    <div class="page-header">
+      <div>
+        <div class="page-header__title">Shop Settings</div>
+        <div class="page-header__sub">Labor rates, tax, and invoice defaults</div>
+      </div>
+    </div>
+    <div class="app-card" style="max-width:640px">
+      <div class="app-card__body">
+        <form id="settingsForm" style="display:flex;flex-direction:column;gap:16px">
+          <div class="form-row"><label class="form-label">Shop Name</label><input class="form-input" id="shopName"></div>
+          <div class="form-row"><label class="form-label">Address</label><input class="form-input" id="shopAddress"></div>
+          <div class="form-row-2">
+            <div class="form-row"><label class="form-label">Phone</label><input class="form-input" id="shopPhone"></div>
+            <div class="form-row"><label class="form-label">Email</label><input class="form-input" id="shopEmail"></div>
+          </div>
+          <div class="form-row-2">
+            <div class="form-row"><label class="form-label">Labor Rate ($/hr)</label><input class="form-input" id="laborRate" type="number" step="0.01"></div>
+            <div class="form-row"><label class="form-label">Parts Markup (%)</label><input class="form-input" id="partsMarkup" type="number" step="1" placeholder="40"></div>
+          </div>
+          <div class="form-row-2">
+            <div class="form-row"><label class="form-label">NJ Tax Rate (%)</label><input class="form-input" id="taxRate" type="number" step="0.001" placeholder="6.625"></div>
+            <div class="form-row"><label class="form-label">Payment Terms (days)</label><input class="form-input" id="paymentTerms" type="number"></div>
+          </div>
+          <button type="submit" class="btn btn--primary" id="saveSettings" style="align-self:flex-start"><i class="fas fa-save"></i> Save Settings</button>
+        </form>
+      </div>
+    </div>
+    <div class="app-card" style="max-width:640px;margin-top:20px">
+      <div class="app-card__header"><div class="app-card__title">Data Management</div></div>
+      <div class="app-card__body" style="display:flex;gap:12px;flex-wrap:wrap">
+        <button class="btn btn--secondary" id="exportAllBtn"><i class="fas fa-download"></i> Export Audit Log</button>
+        <button class="btn btn--secondary" id="reseedBtn"><i class="fas fa-database"></i> Clear Local Cache</button>
+        <button class="btn btn--primary" id="bootstrapStaffBtn"><i class="fas fa-users-cog"></i> Bootstrap Firebase Staff</button>
+      </div>
+    </div>
+  </div>
+</main>
+<script src="/app/js/utils.js"></script>
+<script src="/app/js/data-store.js"></script>
+<script src="/app/js/auth.js"></script>
+<script src="/app/js/data-service.js"></script>
+<script src="/app/js/page-scripts.js"></script>
+<script src="/app/js/app-components.js"></script>
+<script>
+  ARS.Pages.waitReady(() => {
+    if (!ARS.can('settings.view')) {
+      showToast('Permission denied', 'error');
+      setTimeout(() => location.href = '/app/dashboard.html', 800);
+      return;
+    }
+    if (ARS.Auth.getRole() !== 'developer' && ARS.Auth.getRole() !== 'admin') {
+      document.getElementById('bootstrapStaffBtn')?.remove();
+    }
+    const s = ARS.Store.getSettings();
+    document.getElementById('shopName').value = s.shopName || '';
+    document.getElementById('shopAddress').value = s.shopAddress || '';
+    document.getElementById('shopPhone').value = s.shopPhone || '';
+    document.getElementById('shopEmail').value = s.shopEmail || '';
+    document.getElementById('laborRate').value = s.laborRate || 95;
+    document.getElementById('partsMarkup').value = (s.partsMarkup || 0.4) * 100;
+    document.getElementById('taxRate').value = ((s.taxRate || 0.06625) * 100).toFixed(3);
+    document.getElementById('paymentTerms').value = s.paymentTermsDays || 14;
+
+    document.getElementById('settingsForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (!ARS.can('settings.edit')) return showToast('Permission denied', 'error');
+      const patch = {
+        shopName: document.getElementById('shopName').value,
+        shopAddress: document.getElementById('shopAddress').value,
+        shopPhone: document.getElementById('shopPhone').value,
+        shopEmail: document.getElementById('shopEmail').value,
+        laborRate: Number(document.getElementById('laborRate').value),
+        partsMarkup: Number(document.getElementById('partsMarkup').value) / 100,
+        taxRate: Number(document.getElementById('taxRate').value) / 100,
+        paymentTermsDays: Number(document.getElementById('paymentTerms').value),
+      };
+      ARS.Store.setSettings(patch);
+      if (ARS.FirestoreSync?.isActive?.()) {
+        try {
+          await ARS.FirestoreSync.pushItem('settings', { id: 'shop', ...patch });
+        } catch (err) {
+          return showToast(err.message, 'error');
+        }
+      }
+      ARS.Data._audit({ action: 'settings.update', entityType: 'settings' });
+      showToast('Settings saved', 'success');
+    });
+
+    document.getElementById('exportAllBtn')?.addEventListener('click', () => {
+      const log = ARS.Store.getCollection('auditLog');
+      ARS.exportCSV('audit-log.csv', ['action','entityId','by','at'], log.map(l => [l.action, l.entityId || '', l.by, l.at]));
+    });
+
+    document.getElementById('reseedBtn')?.addEventListener('click', async () => {
+      if (!confirm('Clear local cache and reload from Firestore?')) return;
+      localStorage.removeItem('ars_platform_v1');
+      if (ARS.FirestoreSync?.isActive?.()) {
+        await ARS.FirestoreSync.init();
+      }
+      await ARS.Data.init();
+      showToast('Local cache cleared — data reloaded from cloud', 'info');
+      location.reload();
+    });
+
+    document.getElementById('bootstrapStaffBtn')?.addEventListener('click', async () => {
+      const secret = prompt('Bootstrap secret:', 'alex-road-bootstrap-2026');
+      if (!secret) return;
+      try {
+        if (!window.ARSFirebase?.app) throw new Error('Firebase not loaded');
+        const { getFunctions, httpsCallable } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js');
+        const fn = httpsCallable(getFunctions(window.ARSFirebase.app, 'us-central1'), 'bootstrapStaff');
+        const res = await fn({ secret, overwritePasswords: false });
+        showToast(res.data?.message || 'Staff bootstrapped — sign out and back in', 'success');
+        console.log('Bootstrap:', res.data);
+      } catch (e) {
+        showToast(e.message || 'Bootstrap failed — deploy functions first', 'error');
+      }
+    });
+  });
+</script>
+</body>
+</html>

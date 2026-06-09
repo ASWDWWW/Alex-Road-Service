@@ -158,8 +158,8 @@ function buildFooter() {
     <div class="footer__bottom">
       <span class="footer__copy">© ${year} Alex Road Service. All rights reserved.</span>
       <div class="footer__bottom-links">
-        <a href="#" class="footer__bottom-link">Privacy Policy</a>
-        <a href="#" class="footer__bottom-link">Terms of Service</a>
+        <a href="/privacy.html" class="footer__bottom-link">Privacy Policy</a>
+        <a href="/terms.html" class="footer__bottom-link">Terms of Service</a>
         <a href="/sitemap.xml" class="footer__bottom-link">Sitemap</a>
       </div>
     </div>
@@ -168,6 +168,14 @@ function buildFooter() {
 }
 
 /* ─── INJECT ─── */
+(function loadFirebaseAnalytics() {
+  if (document.querySelector('script[src="/js/firebase-config.js"]')) return;
+  const s = document.createElement('script');
+  s.src = '/js/firebase-config.js';
+  s.defer = true;
+  document.head.appendChild(s);
+})();
+
 document.addEventListener('DOMContentLoaded', () => {
   // Inject nav
   document.body.insertAdjacentHTML('afterbegin', buildNav());

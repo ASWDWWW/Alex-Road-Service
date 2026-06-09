@@ -3,6 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <title>Trucks | Alex Road Service Ops</title>
   <link rel="stylesheet" href="/app/css/app.css">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
@@ -19,7 +21,7 @@
         <div class="page-header__sub">Vehicle records, service history, and PM tracking</div>
       </div>
       <div class="page-header__actions">
-        <button class="btn btn--secondary btn--sm"><i class="fas fa-download"></i> Export</button>
+        <button class="btn btn--secondary btn--sm" id="truckExportBtn"><i class="fas fa-download"></i> Export</button>
         <button class="btn btn--primary" onclick="openModal('addTruckModal')"><i class="fas fa-plus"></i> Add Truck</button>
       </div>
     </div>
@@ -28,25 +30,25 @@
     <div class="kpi-grid" style="margin-bottom:18px">
       <div class="kpi-card">
         <div class="kpi-card__row">
-          <div><div class="kpi-card__label">Total Units</div><div class="kpi-card__value">10</div></div>
+          <div><div class="kpi-card__label">Total Units</div><div class="kpi-card__value" id="kpiTotalUnits">0</div></div>
           <div class="kpi-card__icon blue"><i class="fas fa-truck"></i></div>
         </div>
       </div>
       <div class="kpi-card">
         <div class="kpi-card__row">
-          <div><div class="kpi-card__label">Active</div><div class="kpi-card__value green">7</div></div>
+          <div><div class="kpi-card__label">Active</div><div class="kpi-card__value green" id="kpiActive">0</div></div>
           <div class="kpi-card__icon green"><i class="fas fa-road"></i></div>
         </div>
       </div>
       <div class="kpi-card">
         <div class="kpi-card__row">
-          <div><div class="kpi-card__label">In Shop</div><div class="kpi-card__value red">1</div></div>
+          <div><div class="kpi-card__label">In Shop</div><div class="kpi-card__value red" id="kpiInShop">0</div></div>
           <div class="kpi-card__icon red"><i class="fas fa-tools"></i></div>
         </div>
       </div>
       <div class="kpi-card">
         <div class="kpi-card__row">
-          <div><div class="kpi-card__label">PM Due</div><div class="kpi-card__value amber">2</div></div>
+          <div><div class="kpi-card__label">PM Due</div><div class="kpi-card__value amber" id="kpiPMDue">0</div></div>
           <div class="kpi-card__icon amber"><i class="fas fa-calendar-exclamation"></i></div>
         </div>
       </div>
@@ -92,35 +94,26 @@
     </div>
     <div class="modal__body">
       <div class="form-row-2">
-        <div class="form-row"><label class="form-label">Unit Number *</label><input class="form-input" placeholder="e.g. 205"></div>
+        <div class="form-row"><label class="form-label">Unit Number *</label><input class="form-input" id="truckUnit" placeholder="e.g. 205"></div>
         <div class="form-row">
           <label class="form-label">Customer / Owner *</label>
-          <select class="form-select" id="truckOwnerSelect">
-            <option value="">Select customer…</option>
-            <option>Reid Trucking LLC</option>
-            <option>Lopez Distribution</option>
-            <option>James Construction</option>
-            <option>Travis Cooper</option>
-            <option>Linda Gomez</option>
-            <option>WashEx Logistics</option>
-            <option>Kim Brothers Inc.</option>
-          </select>
+          <select class="form-select" id="truckOwnerSelect"></select>
         </div>
       </div>
       <div class="form-row-2">
-        <div class="form-row"><label class="form-label">Year</label><input class="form-input" type="number" placeholder="e.g. 2021"></div>
-        <div class="form-row"><label class="form-label">Make</label><input class="form-input" placeholder="e.g. Kenworth"></div>
+        <div class="form-row"><label class="form-label">Year</label><input class="form-input" id="truckYear" type="number" placeholder="e.g. 2021"></div>
+        <div class="form-row"><label class="form-label">Make</label><input class="form-input" id="truckMake" placeholder="e.g. Kenworth"></div>
       </div>
       <div class="form-row-2">
-        <div class="form-row"><label class="form-label">Model</label><input class="form-input" placeholder="e.g. T680"></div>
-        <div class="form-row"><label class="form-label">Mileage</label><input class="form-input" type="number" placeholder="e.g. 214180"></div>
+        <div class="form-row"><label class="form-label">Model</label><input class="form-input" id="truckModel" placeholder="e.g. T680"></div>
+        <div class="form-row"><label class="form-label">Mileage</label><input class="form-input" id="truckMileage" type="number" placeholder="e.g. 214180"></div>
       </div>
-      <div class="form-row"><label class="form-label">VIN</label><input class="form-input" placeholder="17-character VIN"></div>
+      <div class="form-row"><label class="form-label">VIN</label><input class="form-input" id="truckVin" placeholder="17-character VIN"></div>
       <div class="form-row-2">
-        <div class="form-row"><label class="form-label">Last PM Date</label><input class="form-input" type="date"></div>
-        <div class="form-row"><label class="form-label">Next PM Due</label><input class="form-input" type="date"></div>
+        <div class="form-row"><label class="form-label">Last PM Date</label><input class="form-input" id="truckLastPM" type="date"></div>
+        <div class="form-row"><label class="form-label">Next PM Due</label><input class="form-input" id="truckNextPM" type="date"></div>
       </div>
-      <div class="form-row"><label class="form-label">Notes</label><textarea class="form-textarea" placeholder="Any notes about this truck…"></textarea></div>
+      <div class="form-row"><label class="form-label">Notes</label><textarea class="form-textarea" id="truckNotes" placeholder="Any notes about this truck…"></textarea></div>
     </div>
     <div class="modal__footer">
       <button class="btn btn--secondary" data-close-modal>Cancel</button>
@@ -129,50 +122,109 @@
   </div>
 </div>
 
-<script src="/app/js/mock-data.js"></script>
+<script src="/app/js/utils.js"></script>
+<script src="/app/js/data-store.js"></script>
+<script src="/app/js/auth.js"></script>
+<script src="/app/js/data-service.js"></script>
+<script src="/app/js/page-scripts.js"></script>
 <script src="/app/js/app-components.js"></script>
 <script>
-  let activeFilter = 'all';
-  let searchVal = '';
+  let activeFilter = 'all', searchVal = '';
+
+  function getFilteredTrucks() {
+    let data = ARS.Data.listTrucks({ q: searchVal });
+    if (activeFilter === 'PM Due') {
+      const pmIds = new Set(ARS.Data.trucksPMDue(30).map(t => t.id));
+      data = data.filter(t => t.status === 'PM Due' || pmIds.has(t.id));
+    } else if (activeFilter !== 'all') {
+      data = data.filter(t => t.status === activeFilter);
+    }
+    return data;
+  }
+
+  function renderKpis(all) {
+    const pmDue = ARS.Data.trucksPMDue(30).length;
+    document.getElementById('kpiTotalUnits').textContent = all.length;
+    document.getElementById('kpiActive').textContent = all.filter(t => t.status === 'Active').length;
+    document.getElementById('kpiInShop').textContent = all.filter(t => t.status === 'In Shop').length;
+    document.getElementById('kpiPMDue').textContent = pmDue;
+  }
 
   function renderTable() {
-    const data = TRUCKS.filter(t => {
-      const matchFilter = activeFilter === 'all' || t.status === activeFilter;
-      const q = searchVal.toLowerCase();
-      const matchSearch = !q || t.unit.includes(q) || t.make.toLowerCase().includes(q) || t.model.toLowerCase().includes(q) || t.owner.toLowerCase().includes(q);
-      return matchFilter && matchSearch;
-    });
-    document.getElementById('truckCount').textContent = `${data.length} unit${data.length!==1?'s':''}`;
+    const all = ARS.Data.listTrucks();
+    const data = getFilteredTrucks();
+    renderKpis(all);
+    document.getElementById('truckCount').textContent = `${data.length} unit${data.length !== 1 ? 's' : ''}`;
     const pmDueStyle = (s) => s === 'PM Due' ? 'background:rgba(230,81,0,.06)' : '';
     document.getElementById('truckTable').innerHTML = data.length ? data.map(t => `
       <tr style="${pmDueStyle(t.status)}">
-        <td class="td-bold" style="font-size:.9rem">Unit ${t.unit}</td>
+        <td class="td-bold" style="font-size:.9rem"><a href="/app/truck-detail.html?id=${t.id}" style="color:inherit;text-decoration:none">Unit ${t.unit}</a></td>
         <td class="td-primary">${t.year} ${t.make} ${t.model}</td>
-        <td class="td-mono td-muted">${t.vin}</td>
+        <td class="td-mono td-muted">${t.vin || '—'}</td>
         <td>${t.owner}</td>
         <td style="font-weight:600">${t.mileage}</td>
         <td class="td-muted">${t.lastPM}</td>
-        <td class="${t.status==='PM Due'?'td-red':'td-muted'}">${t.nextPM}</td>
+        <td class="${t.status === 'PM Due' ? 'td-red' : 'td-muted'}">${t.nextPM}</td>
         <td>${chip(t.status)}</td>
         <td class="td-actions">
-          <button class="btn btn--ghost btn--sm btn--icon" title="History"><i class="fas fa-history"></i></button>
-          <button class="btn btn--ghost btn--sm btn--icon" title="Edit"><i class="fas fa-pencil-alt"></i></button>
-          <button class="btn btn--primary btn--sm" onclick="showToast('New WO created for this truck','success')">New WO</button>
+          <a class="btn btn--ghost btn--sm btn--icon" href="/app/truck-detail.html?id=${t.id}" title="View"><i class="fas fa-eye"></i></a>
+          <button class="btn btn--primary btn--sm" onclick="newWOForTruck('${t.id}','${t.customerId}')">New WO</button>
         </td>
       </tr>
     `).join('') : `<tr><td colspan="9"><div class="empty-state"><div class="empty-state__icon"><i class="fas fa-truck"></i></div><div class="empty-state__title">No trucks found</div></div></td></tr>`;
   }
 
-  document.addEventListener('DOMContentLoaded', () => {
+  window.newWOForTruck = (truckId, customerId) => {
+    window.location.href = `/app/work-orders.html?truckId=${truckId}&customerId=${customerId}`;
+  };
+
+  ARS.Pages.waitReady(() => {
+    ARS.Pages.populateCustomerSelect(document.getElementById('truckOwnerSelect'));
     renderTable();
-    document.getElementById('truckFilterTabs').addEventListener('click', e => {
-      const btn = e.target.closest('.filter-tab'); if (!btn) return;
-      document.querySelectorAll('#truckFilterTabs .filter-tab').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active'); activeFilter = btn.dataset.filter; renderTable();
+    ARS.Pages.bindFilters('truckFilterTabs', 'truckSearch', 'truckCount', ({ filter, q }) => {
+      if (filter !== undefined) activeFilter = filter;
+      if (q !== undefined) searchVal = q;
+      renderTable();
     });
-    document.getElementById('truckSearch').addEventListener('input', e => { searchVal = e.target.value; renderTable(); });
-    document.getElementById('saveTruckBtn').addEventListener('click', () => {
+    document.addEventListener('ars:data-changed', renderTable);
+
+    document.getElementById('truckExportBtn')?.addEventListener('click', () => {
+      const rows = ARS.Data.listTrucks().map(t =>
+        [t.id, t.unit, t.year, t.make, t.model, t.owner, t.mileage, t.lastPM, t.nextPM, t.status]
+      );
+      ARS.exportCSV('trucks.csv', ['ID','Unit','Year','Make','Model','Owner','Mileage','Last PM','Next PM','Status'], rows);
+      showToast('Fleet exported', 'success');
+    });
+
+    document.getElementById('saveTruckBtn')?.addEventListener('click', async () => {
+      if (!ARS.can('trucks.create')) return showToast('Permission denied', 'error');
+      const unit = document.getElementById('truckUnit').value.trim();
+      const customerId = document.getElementById('truckOwnerSelect').value;
+      const make = document.getElementById('truckMake').value.trim();
+      const model = document.getElementById('truckModel').value.trim();
+      if (!unit || !customerId || !make || !model) return showToast('Unit, owner, make, and model required', 'error');
+      try {
+        await ARS.Data.createTruck({
+          unit,
+          customerId,
+          year: document.getElementById('truckYear').value,
+          make,
+          model,
+          mileage: document.getElementById('truckMileage').value,
+          vin: document.getElementById('truckVin').value.trim(),
+          lastPM: document.getElementById('truckLastPM').value,
+          nextPM: document.getElementById('truckNextPM').value,
+        });
+      } catch (e) {
+        return showToast(e.message, 'error');
+      }
       closeModal('addTruckModal');
+      ['truckUnit','truckYear','truckMake','truckModel','truckMileage','truckVin','truckLastPM','truckNextPM','truckNotes'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.value = '';
+      });
+      document.getElementById('truckOwnerSelect').value = '';
+      renderTable();
       showToast('Truck added to fleet records!', 'success');
     });
   });

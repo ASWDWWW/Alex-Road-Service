@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <title>Contact Leads | Alex Road Service Ops</title>
+  <link rel="stylesheet" href="/app/css/app.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+</head>
+<body class="app-body">
+<div id="sidebar-placeholder"></div>
+<main class="app-main">
+  <div id="topbar-placeholder" data-title="Contact Leads"></div>
+  <div class="app-content">
+    <div class="page-header">
+      <div>
+        <div class="page-header__title">Website Leads</div>
+        <div class="page-header__sub">Contact form submissions from the public site</div>
+      </div>
+      <div class="page-header__actions">
+        <button class="btn btn--secondary btn--sm" id="leadsExport"><i class="fas fa-download"></i> Export</button>
+      </div>
+    </div>
+    <div class="filter-bar">
+      <div class="filter-search">
+        <i class="fas fa-search"></i>
+        <input type="text" id="leadsSearch" placeholder="Search leads…">
+      </div>
+      <span class="filter-count" id="leadsCount"></span>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Date</th><th>Name</th><th>Phone</th><th>Email</th><th>Service</th><th>Company</th><th>Location</th><th>Message</th></tr>
+        </thead>
+        <tbody id="leadsTable"></tbody>
+      </table>
+    </div>
+  </div>
+</main>
+<script src="/app/js/utils.js"></script>
+<script src="/app/js/data-store.js"></script>
+<script src="/app/js/auth.js"></script>
+<script src="/app/js/data-service.js"></script>
+<script src="/app/js/page-scripts.js"></script>
+<script src="/app/js/app-components.js"></script>
+<script>
+  let searchVal = '';
+  function render() {
+    let data = ARS.Data.listContactSubmissions();
+    if (searchVal) {
+      const q = searchVal.toLowerCase();
+      data = data.filter(l =>
+        (l.name || '').toLowerCase().includes(q) ||
+        (l.phone || '').includes(q) ||
+        (l.email || '').toLowerCase().includes(q)
+      );
+    }
+    document.getElementById('leadsCount').textContent = `${data.length} lead${data.length !== 1 ? 's' : ''}`;
+    document.getElementById('leadsTable').innerHTML = data.length ? data.map(l => `
+      <tr>
+        <td class="td-muted">${ARS.fmtDate(l.createdAt || l.timestamp)}</td>
+        <td class="td-primary">${l.name || '—'}</td>
+        <td><a href="tel:${(l.phone||'').replace(/\D/g,'')}" style="color:var(--red)">${l.phone || '—'}</a></td>
+        <td class="td-muted">${l.email || '—'}</td>
+        <td>${l.service || '—'}</td>
+        <td class="td-muted">${l.company || '—'}</td>
+        <td class="td-muted">${l.location || '—'}</td>
+        <td style="font-size:.8rem;max-width:200px">${l.message || '—'}</td>
+      </tr>`).join('') : `<tr><td colspan="8"><div class="empty-state"><div class="empty-state__title">No leads yet</div></div></td></tr>`;
+  }
+  ARS.Pages.waitReady(() => {
+    if (!ARS.canAccessLeads()) {
+      showToast('Permission denied', 'error');
+      setTimeout(() => location.href = '/app/dashboard.html', 600);
+      return;
+    }
+    render();
+    document.getElementById('leadsSearch')?.addEventListener('input', e => { searchVal = e.target.value; render(); });
+    document.addEventListener('ars:data-changed', render);
+    document.getElementById('leadsExport')?.addEventListener('click', () => {
+      const rows = ARS.Data.listContactSubmissions().map(l =>
+        [l.createdAt, l.name, l.phone, l.email, l.service, l.company, l.location, l.message]
+      );
+      ARS.exportCSV('leads.csv', ['Date','Name','Phone','Email','Service','Company','Location','Message'], rows);
+    });
+  });
+</script>
+</body>
+</html>

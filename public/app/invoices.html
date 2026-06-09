@@ -3,6 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <title>Invoices | Alex Road Service Ops</title>
   <link rel="stylesheet" href="/app/css/app.css">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
@@ -19,8 +21,8 @@
         <div class="page-header__sub">Issue and track all customer invoices</div>
       </div>
       <div class="page-header__actions">
-        <button class="btn btn--secondary btn--sm"><i class="fas fa-download"></i> Export</button>
-        <button class="btn btn--primary" onclick="showToast('Select a completed WO to generate an invoice','info')"><i class="fas fa-plus"></i> New Invoice</button>
+        <button class="btn btn--secondary btn--sm" id="invExportBtn"><i class="fas fa-download"></i> Export</button>
+        <button class="btn btn--primary" id="newInvBtn" onclick="openModal('newInvModal')"><i class="fas fa-plus"></i> New Invoice</button>
       </div>
     </div>
 
@@ -28,25 +30,25 @@
     <div class="kpi-grid" style="margin-bottom:18px">
       <div class="kpi-card">
         <div class="kpi-card__row">
-          <div><div class="kpi-card__label">Total Invoiced (MTD)</div><div class="kpi-card__value">$3,690</div></div>
+          <div><div class="kpi-card__label">Total Invoiced (MTD)</div><div class="kpi-card__value" id="kpiInvMTD">$0</div></div>
           <div class="kpi-card__icon blue"><i class="fas fa-file-invoice-dollar"></i></div>
         </div>
       </div>
       <div class="kpi-card">
         <div class="kpi-card__row">
-          <div><div class="kpi-card__label">Paid</div><div class="kpi-card__value green">$1,805</div></div>
+          <div><div class="kpi-card__label">Paid</div><div class="kpi-card__value green" id="kpiInvPaid">$0</div></div>
           <div class="kpi-card__icon green"><i class="fas fa-check-circle"></i></div>
         </div>
       </div>
       <div class="kpi-card">
         <div class="kpi-card__row">
-          <div><div class="kpi-card__label">Awaiting Payment</div><div class="kpi-card__value amber">$675</div></div>
+          <div><div class="kpi-card__label">Awaiting Payment</div><div class="kpi-card__value amber" id="kpiInvAwaiting">$0</div></div>
           <div class="kpi-card__icon amber"><i class="fas fa-clock"></i></div>
         </div>
       </div>
       <div class="kpi-card">
         <div class="kpi-card__row">
-          <div><div class="kpi-card__label">Overdue</div><div class="kpi-card__value red">$1,410</div></div>
+          <div><div class="kpi-card__label">Overdue</div><div class="kpi-card__value red" id="kpiInvOverdue">$0</div></div>
           <div class="kpi-card__icon red"><i class="fas fa-exclamation-circle"></i></div>
         </div>
       </div>
@@ -84,47 +86,162 @@
   </div>
 </main>
 
-<script src="/app/js/mock-data.js"></script>
+<!-- New Invoice from WO Modal -->
+<div class="modal-overlay" id="newInvModal">
+  <div class="modal">
+    <div class="modal__header">
+      <div class="modal__title">Generate Invoice from Work Order</div>
+      <button class="modal__close" data-close-modal><i class="fas fa-times"></i></button>
+    </div>
+    <div class="modal__body">
+      <div class="form-row">
+        <label class="form-label">Completed Work Order *</label>
+        <select class="form-select" id="newInvWo"></select>
+      </div>
+    </div>
+    <div class="modal__footer">
+      <button class="btn btn--secondary" data-close-modal>Cancel</button>
+      <button class="btn btn--primary" id="createInvBtn"><i class="fas fa-check"></i> Generate Invoice</button>
+    </div>
+  </div>
+</div>
+
+<!-- Stripe Payment Modal -->
+<div class="modal-overlay" id="recordPayModal">
+  <div class="modal">
+    <div class="modal__header">
+      <div class="modal__title">Collect Payment via Stripe</div>
+      <button class="modal__close" data-close-modal><i class="fas fa-times"></i></button>
+    </div>
+    <div class="modal__body">
+      <input type="hidden" id="payInvoiceId">
+      <div class="form-row"><label class="form-label">Invoice</label><input class="form-input" id="payInvoiceLabel" readonly></div>
+      <div class="form-row"><label class="form-label">Amount ($) *</label><input class="form-input" id="payAmount" type="number" placeholder="0.00" min="0" step="0.01"></div>
+      <p style="font-size:.8rem;color:var(--steel);margin-top:8px"><i class="fab fa-stripe" style="margin-right:6px"></i> Customer pays securely on Stripe Checkout. Payment is recorded automatically when complete.</p>
+    </div>
+    <div class="modal__footer">
+      <button class="btn btn--secondary" data-close-modal>Cancel</button>
+      <button class="btn btn--primary" id="savePayBtn"><i class="fab fa-stripe"></i> Pay with Stripe</button>
+    </div>
+  </div>
+</div>
+
+<script src="/app/js/utils.js"></script>
+<script src="/app/js/data-store.js"></script>
+<script src="/app/js/auth.js"></script>
+<script src="/app/js/data-service.js"></script>
+<script src="/app/js/documents.js"></script>
+<script src="/app/js/page-scripts.js"></script>
 <script src="/app/js/app-components.js"></script>
 <script>
   let activeFilter = 'all', searchVal = '';
 
+  function renderKpis() {
+    ARS.Data.refreshOverdueInvoices();
+    const kpis = ARS.Data.getDashboardKPIs();
+    const invoices = ARS.Data.listInvoices();
+    const now = new Date();
+    const mtdStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const mtdInvoices = invoices.filter(inv => new Date(inv.createdAt || inv.date) >= mtdStart);
+    const mtdTotal = mtdInvoices.reduce((s, inv) => s + inv.total, 0);
+    const paidTotal = invoices.filter(inv => inv.status === 'Paid').reduce((s, inv) => s + inv.total, 0);
+    const awaiting = invoices
+      .filter(inv => ['Sent', 'Partially Paid'].includes(inv.status))
+      .reduce((s, inv) => s + inv.balance, 0);
+    const overdueTotal = invoices
+      .filter(inv => inv.status === 'Overdue')
+      .reduce((s, inv) => s + inv.balance, 0);
+    document.getElementById('kpiInvMTD').textContent = fmt$(mtdTotal);
+    document.getElementById('kpiInvPaid').textContent = fmt$(paidTotal);
+    document.getElementById('kpiInvAwaiting').textContent = fmt$(awaiting);
+    document.getElementById('kpiInvOverdue').textContent = fmt$(overdueTotal);
+  }
+
   function renderTable() {
-    const data = INVOICES.filter(inv => {
-      const matchFilter = activeFilter === 'all' || inv.status === activeFilter;
-      const q = searchVal.toLowerCase();
-      const matchSearch = !q || inv.id.toLowerCase().includes(q) || inv.customer.toLowerCase().includes(q);
-      return matchFilter && matchSearch;
-    });
-    document.getElementById('invCount').textContent = `${data.length} invoice${data.length!==1?'s':''}`;
+    renderKpis();
+    const filters = { q: searchVal };
+    if (activeFilter !== 'all') filters.status = activeFilter;
+    const data = ARS.Data.listInvoices(filters);
+    document.getElementById('invCount').textContent = `${data.length} invoice${data.length !== 1 ? 's' : ''}`;
+    const canPay = ARS.can('payments.record');
     document.getElementById('invTable').innerHTML = data.length ? data.map(inv => {
       const isOverdue = inv.status === 'Overdue';
       return `
-      <tr style="${isOverdue?'background:rgba(229,31,43,.025)':''}">
-        <td class="td-mono td-bold">${inv.id}</td>
+      <tr style="${isOverdue ? 'background:rgba(229,31,43,.025)' : ''}">
+        <td class="td-mono td-bold"><a href="/app/invoice-detail.html?id=${inv.id}" style="color:inherit;text-decoration:none">${inv.id}</a></td>
         <td class="td-muted">${inv.date}</td>
-        <td class="${isOverdue?'td-red':'td-muted'}">${inv.due}${isOverdue?' <i class="fas fa-exclamation-triangle" style="font-size:.7rem;margin-left:4px"></i>':''}</td>
-        <td class="td-primary">${inv.customer}</td>
-        <td class="td-mono td-muted">${inv.wo}</td>
-        <td style="text-align:right;font-weight:700">${inv.total}</td>
+        <td class="${isOverdue ? 'td-red' : 'td-muted'}">${inv.due}${isOverdue ? ' <i class="fas fa-exclamation-triangle" style="font-size:.7rem;margin-left:4px"></i>' : ''}</td>
+        <td class="td-primary">${inv.customerName}</td>
+        <td class="td-mono td-muted">${inv.workOrderId || '—'}</td>
+        <td style="text-align:right;font-weight:700">${fmt$(inv.total)}</td>
         <td>${chip(inv.status)}</td>
         <td class="td-actions">
-          <button class="btn btn--ghost btn--sm btn--icon" title="Print"><i class="fas fa-print"></i></button>
-          <button class="btn btn--ghost btn--sm btn--icon" title="Send"><i class="fas fa-paper-plane"></i></button>
-          ${inv.status!=='Paid' ? `<button class="btn btn--primary btn--sm" onclick="showToast('Payment recorded for '+this.closest('tr').querySelector('.td-primary').textContent,'success')">Record Payment</button>` : `<span style="font-size:.78rem;color:#059669;font-weight:600"><i class="fas fa-check"></i> Paid</span>`}
+          <button class="btn btn--ghost btn--sm btn--icon" onclick="ARS.Documents.printInvoice('${inv.id}')" title="Print"><i class="fas fa-print"></i></button>
+          ${inv.status !== 'Paid' && inv.status !== 'Written Off' && canPay ? `<button class="btn btn--primary btn--sm" onclick="openPayModal('${inv.id}')"><i class="fab fa-stripe"></i> Pay</button>` : inv.status === 'Paid' ? `<span style="font-size:.78rem;color:#059669;font-weight:600"><i class="fas fa-check"></i> Paid</span>` : ''}
         </td>
       </tr>`;
     }).join('') : `<tr><td colspan="8"><div class="empty-state"><div class="empty-state__icon"><i class="fas fa-file-invoice-dollar"></i></div><div class="empty-state__title">No invoices found</div></div></td></tr>`;
   }
 
-  document.addEventListener('DOMContentLoaded', () => {
+  window.openPayModal = (invoiceId) => {
+    const inv = ARS.Data.getInvoice(invoiceId);
+    if (!inv) return;
+    document.getElementById('payInvoiceId').value = invoiceId;
+    document.getElementById('payInvoiceLabel').value = `${inv.id} · ${inv.customerName} · Balance ${fmt$(inv.balance)}`;
+    document.getElementById('payAmount').value = inv.balance.toFixed(2);
+    openModal('recordPayModal');
+  };
+
+  function populateWoSelect() {
+    const sel = document.getElementById('newInvWo');
+    if (!sel) return;
+    const wos = ARS.Data.listWorkOrdersReadyToInvoice();
+    sel.innerHTML = '<option value="">Select completed work order…</option>' +
+      wos.map(w => `<option value="${w.id}">${w.id} · ${w.customerName} · ${fmt$(w.total)}</option>`).join('');
+  }
+
+  ARS.Pages.waitReady(() => {
+    populateWoSelect();
+    if (!ARS.can('invoices.create')) document.getElementById('newInvBtn')?.remove();
     renderTable();
-    document.getElementById('invFilterTabs').addEventListener('click', e => {
-      const btn = e.target.closest('.filter-tab'); if (!btn) return;
-      document.querySelectorAll('#invFilterTabs .filter-tab').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active'); activeFilter = btn.dataset.filter; renderTable();
+    ARS.Pages.bindFilters('invFilterTabs', 'invSearch', 'invCount', ({ filter, q }) => {
+      if (filter !== undefined) activeFilter = filter;
+      if (q !== undefined) searchVal = q;
+      renderTable();
     });
-    document.getElementById('invSearch').addEventListener('input', e => { searchVal = e.target.value; renderTable(); });
+    document.addEventListener('ars:data-changed', renderTable);
+
+    document.getElementById('invExportBtn')?.addEventListener('click', () => {
+      const rows = ARS.Data.listInvoices().map(inv => [inv.id, inv.date, inv.due, inv.customerName, inv.workOrderId, inv.total, inv.amountPaid, inv.status]);
+      ARS.exportCSV('invoices.csv', ['Invoice','Date','Due','Customer','Work Order','Total','Paid','Status'], rows);
+      showToast('Invoices exported', 'success');
+    });
+
+    document.getElementById('createInvBtn')?.addEventListener('click', async () => {
+      const woId = document.getElementById('newInvWo').value;
+      if (!woId) return showToast('Select a work order', 'error');
+      try {
+        const inv = await ARS.Data.createInvoiceFromWO(woId);
+        closeModal('newInvModal');
+        populateWoSelect();
+        renderTable();
+        showToast(`Invoice ${inv.id} created`, 'success');
+      } catch (e) { showToast(e.message, 'error'); }
+    });
+
+    document.getElementById('savePayBtn')?.addEventListener('click', async () => {
+      const invoiceId = document.getElementById('payInvoiceId').value;
+      const amount = Number(document.getElementById('payAmount').value);
+      if (!invoiceId || !amount) return showToast('Amount required', 'error');
+      const btn = document.getElementById('savePayBtn');
+      btn.disabled = true;
+      try {
+        await ARS.Payments.startCheckout(invoiceId, amount);
+      } catch (e) {
+        showToast(e.message, 'error');
+        btn.disabled = false;
+      }
+    });
   });
 </script>
 </body>

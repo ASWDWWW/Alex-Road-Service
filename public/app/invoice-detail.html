@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <title>Invoice Detail | Alex Road Service Ops</title>
+  <link rel="stylesheet" href="/app/css/app.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+</head>
+<body class="app-body">
+<div id="sidebar-placeholder"></div>
+<main class="app-main">
+  <div id="topbar-placeholder" data-title="Invoice"></div>
+  <div class="app-content" id="detailRoot">Loading…</div>
+</main>
+<script src="/app/js/utils.js"></script>
+<script src="/app/js/data-store.js"></script>
+<script src="/app/js/auth.js"></script>
+<script src="/app/js/data-service.js"></script>
+<script src="/app/js/documents.js"></script>
+<script src="/app/js/page-scripts.js"></script>
+<script src="/app/js/app-components.js"></script>
+<script>
+  function render() {
+    const id = new URLSearchParams(location.search).get('id');
+    const inv = ARS.Data.getInvoice(id);
+    if (!inv) {
+      document.getElementById('detailRoot').innerHTML = '<div class="empty-state"><div class="empty-state__title">Invoice not found</div></div>';
+      return;
+    }
+    const wo = inv.workOrderId ? ARS.Data.getWorkOrder(inv.workOrderId) : null;
+    const payments = ARS.Data.listPayments().filter(p => p.invoiceId === id);
+    const canPay = ARS.can('payments.record') && !['Paid', 'Written Off'].includes(inv.status);
+    const canWriteOff = ARS.can('invoices.writeOff') && inv.status === 'Overdue';
+    document.getElementById('detailRoot').innerHTML = `
+      <div class="page-header">
+        <div>
+          <a href="/app/invoices.html" style="font-size:.8rem;color:var(--steel)"><i class="fas fa-arrow-left"></i> Invoices</a>
+          <div class="page-header__title" style="margin-top:8px">${inv.id}</div>
+          <div class="page-header__sub">${inv.customerName} · ${chip(inv.status)}</div>
+        </div>
+        <div class="page-header__actions" style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn btn--secondary" id="printBtn"><i class="fas fa-print"></i> Print</button>
+          ${canPay ? `<button class="btn btn--primary" id="payBtn"><i class="fab fa-stripe"></i> Pay with Stripe</button>` : ''}
+          ${canWriteOff ? `<button class="btn btn--ghost" id="writeOffBtn">Write Off</button>` : ''}
+        </div>
+      </div>
+      <div class="dash-grid">
+        <div class="app-card">
+          <div class="app-card__body" style="font-size:.88rem;display:grid;gap:10px">
+            <div><span style="color:var(--steel)">Invoice Date:</span> <strong>${inv.date}</strong></div>
+            <div><span style="color:var(--steel)">Due Date:</span> <strong>${inv.due}</strong></div>
+            <div><span style="color:var(--steel)">Work Order:</span> ${wo ? `<a href="/app/work-order-detail.html?id=${wo.id}">${wo.id}</a>` : '—'}</div>
+            ${wo ? `<div><span style="color:var(--steel)">Description:</span> ${wo.desc}</div>` : ''}
+          </div>
+        </div>
+        <div class="app-card">
+          <div class="app-card__body" style="display:flex;flex-direction:column;gap:8px">
+            <div style="display:flex;justify-content:space-between"><span>Total</span><strong>${fmt$(inv.total)}</strong></div>
+            <div style="display:flex;justify-content:space-between"><span>Paid</span><strong style="color:#059669">${fmt$(inv.amountPaid || 0)}</strong></div>
+            <div style="display:flex;justify-content:space-between;border-top:1px solid var(--border);padding-top:8px"><span>Balance</span><strong>${fmt$(inv.balance)}</strong></div>
+          </div>
+        </div>
+      </div>
+      <div class="app-card" style="margin-top:16px">
+        <div class="app-card__header"><div class="app-card__title">Payments</div></div>
+        <div class="table-wrap" style="border:none">
+          <table><thead><tr><th>ID</th><th>Date</th><th>Amount</th><th>Method</th></tr></thead>
+          <tbody>${payments.map(p => `<tr><td>${p.id}</td><td>${p.date}</td><td>${p.amountDisplay}</td><td>${p.method}</td></tr>`).join('') || '<tr><td colspan="4">No payments recorded</td></tr>'}</tbody>
+          </table>
+        </div>
+      </div>`;
+
+    document.getElementById('printBtn')?.addEventListener('click', () => ARS.Documents.printInvoice(id));
+    document.getElementById('payBtn')?.addEventListener('click', async () => {
+      const btn = document.getElementById('payBtn');
+      btn.disabled = true;
+      try {
+        await ARS.Payments.startCheckout(id, inv.balance);
+      } catch (e) {
+        showToast(e.message, 'error');
+        btn.disabled = false;
+      }
+    });
+    document.getElementById('writeOffBtn')?.addEventListener('click', () => {
+      const reason = prompt('Write-off reason:');
+      if (!reason) return;
+      ARS.Data.writeOffInvoice(id, reason);
+      showToast('Invoice written off', 'warning');
+      render();
+    });
+  }
+  ARS.Pages.waitReady(() => { render(); document.addEventListener('ars:data-changed', render); });
+</script>
+</body>
+</html>

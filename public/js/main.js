@@ -125,11 +125,14 @@ document.addEventListener('DOMContentLoaded', () => {
     btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> SENDING...';
 
     const data = {
-      name:      contactForm.elements['name']?.value    || '',
-      email:     contactForm.elements['email']?.value   || '',
-      phone:     contactForm.elements['phone']?.value   || '',
-      service:   contactForm.elements['service']?.value || '',
-      message:   contactForm.elements['message']?.value || '',
+      name:      contactForm.elements['name']?.value     || '',
+      company:   contactForm.elements['company']?.value || '',
+      email:     contactForm.elements['email']?.value    || '',
+      phone:     contactForm.elements['phone']?.value    || '',
+      service:   contactForm.elements['service']?.value  || '',
+      truck:     contactForm.elements['truck']?.value    || '',
+      location:  contactForm.elements['location']?.value || '',
+      message:   contactForm.elements['message']?.value  || '',
       timestamp: new Date().toISOString(),
       source:    'website-contact-form',
     };

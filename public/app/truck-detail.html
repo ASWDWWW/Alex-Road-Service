@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <title>Truck Detail | Alex Road Service Ops</title>
+  <link rel="stylesheet" href="/app/css/app.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+</head>
+<body class="app-body">
+<div id="sidebar-placeholder"></div>
+<main class="app-main">
+  <div id="topbar-placeholder" data-title="Truck Detail"></div>
+  <div class="app-content" id="detailRoot">Loading…</div>
+</main>
+
+<div class="modal-overlay" id="editTruckModal">
+  <div class="modal">
+    <div class="modal__header">
+      <div class="modal__title">Edit Truck</div>
+      <button class="modal__close" data-close-modal><i class="fas fa-times"></i></button>
+    </div>
+    <div class="modal__body">
+      <div class="form-row-2">
+        <div class="form-row"><label class="form-label">Unit</label><input class="form-input" id="eUnit"></div>
+        <div class="form-row"><label class="form-label">Mileage</label><input class="form-input" id="eMileage"></div>
+      </div>
+      <div class="form-row-2">
+        <div class="form-row"><label class="form-label">Year</label><input class="form-input" id="eYear" type="number"></div>
+        <div class="form-row"><label class="form-label">Make</label><input class="form-input" id="eMake"></div>
+      </div>
+      <div class="form-row"><label class="form-label">Model</label><input class="form-input" id="eModel"></div>
+      <div class="form-row-2">
+        <div class="form-row"><label class="form-label">Last PM</label><input class="form-input" id="eLastPM" type="date"></div>
+        <div class="form-row"><label class="form-label">Next PM</label><input class="form-input" id="eNextPM" type="date"></div>
+      </div>
+      <div class="form-row"><label class="form-label">Status</label>
+        <select class="form-select" id="eStatus">
+          <option>Active</option><option>In Shop</option><option>PM Due</option><option>Inactive</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal__footer">
+      <button class="btn btn--secondary" data-close-modal>Cancel</button>
+      <button class="btn btn--primary" id="saveEditTruck"><i class="fas fa-save"></i> Save</button>
+    </div>
+  </div>
+</div>
+
+<script src="/app/js/utils.js"></script>
+<script src="/app/js/data-store.js"></script>
+<script src="/app/js/auth.js"></script>
+<script src="/app/js/data-service.js"></script>
+<script src="/app/js/page-scripts.js"></script>
+<script src="/app/js/app-components.js"></script>
+<script>
+  let truckId = null;
+
+  function render() {
+    truckId = new URLSearchParams(location.search).get('id');
+    const t = ARS.Data.getTruck(truckId);
+    if (!t) {
+      document.getElementById('detailRoot').innerHTML = '<div class="empty-state"><div class="empty-state__title">Truck not found</div></div>';
+      return;
+    }
+    const wos = ARS.Data.listWorkOrders().filter(w => w.truckId === truckId || (w.truckLabel || '').includes(`Unit ${t.unit}`));
+    const cust = ARS.Data.getCustomer(t.customerId);
+    const canEdit = ARS.can('trucks.edit');
+    document.getElementById('detailRoot').innerHTML = `
+      <div class="page-header">
+        <div>
+          <a href="/app/trucks.html" style="font-size:.8rem;color:var(--steel)"><i class="fas fa-arrow-left"></i> Trucks</a>
+          <div class="page-header__title" style="margin-top:8px">Unit ${t.unit}</div>
+          <div class="page-header__sub">${t.year} ${t.make} ${t.model} · ${t.owner}</div>
+        </div>
+        <div class="page-header__actions" style="display:flex;gap:8px">
+          ${canEdit ? `<button class="btn btn--secondary" id="editTruckBtn"><i class="fas fa-pencil-alt"></i> Edit</button>` : ''}
+          ${ARS.can('workOrders.create') ? `<a href="/app/work-orders.html?truckId=${truckId}&customerId=${t.customerId}" class="btn btn--primary"><i class="fas fa-plus"></i> New WO</a>` : ''}
+        </div>
+      </div>
+      <div class="kpi-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:18px">
+        <div class="kpi-card"><div class="kpi-card__label">Mileage</div><div class="kpi-card__value" style="font-size:1.2rem">${t.mileage}</div></div>
+        <div class="kpi-card"><div class="kpi-card__label">Last PM</div><div class="kpi-card__value" style="font-size:1rem">${t.lastPM}</div></div>
+        <div class="kpi-card"><div class="kpi-card__label">Next PM</div><div class="kpi-card__value ${t.status==='PM Due'?'red':''}" style="font-size:1rem">${t.nextPM}</div></div>
+        <div class="kpi-card"><div class="kpi-card__label">Status</div><div style="margin-top:8px">${chip(t.status)}</div></div>
+      </div>
+      <div class="app-card" style="margin-bottom:16px">
+        <div class="app-card__body" style="font-size:.88rem;display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div><span style="color:var(--steel)">VIN:</span> ${t.vin || '—'}</div>
+          <div><span style="color:var(--steel)">Customer:</span> ${cust ? `<a href="/app/customer-detail.html?id=${cust.id}">${cust.name}</a>` : t.owner}</div>
+        </div>
+      </div>
+      <div class="app-card">
+        <div class="app-card__header"><div class="app-card__title">Service History</div></div>
+        <div class="table-wrap" style="border:none">
+          <table><thead><tr><th>WO</th><th>Date</th><th>Description</th><th>Status</th><th>Total</th></tr></thead>
+          <tbody>${wos.map(w => `<tr><td><a href="/app/work-order-detail.html?id=${w.id}">${w.id}</a></td><td>${w.date}</td><td>${w.desc}</td><td>${chip(w.status)}</td><td>${fmt$(w.total)}</td></tr>`).join('') || '<tr><td colspan="5">No service history</td></tr>'}</tbody></table>
+        </div>
+      </div>`;
+
+    document.getElementById('editTruckBtn')?.addEventListener('click', () => {
+      document.getElementById('eUnit').value = t.unit;
+      document.getElementById('eMileage').value = t.mileage;
+      document.getElementById('eYear').value = t.year;
+      document.getElementById('eMake').value = t.make;
+      document.getElementById('eModel').value = t.model;
+      document.getElementById('eLastPM').value = ARS.toInputDate(t.lastPM);
+      document.getElementById('eNextPM').value = ARS.toInputDate(t.nextPM);
+      document.getElementById('eStatus').value = t.status;
+      openModal('editTruckModal');
+    });
+  }
+
+  ARS.Pages.waitReady(() => {
+    render();
+    document.addEventListener('ars:data-changed', render);
+    document.getElementById('saveEditTruck')?.addEventListener('click', () => {
+      if (!ARS.can('trucks.edit')) return showToast('Permission denied', 'error');
+      ARS.Data.updateTruck(truckId, {
+        unit: document.getElementById('eUnit').value.trim(),
+        mileage: document.getElementById('eMileage').value,
+        year: Number(document.getElementById('eYear').value),
+        make: document.getElementById('eMake').value.trim(),
+        model: document.getElementById('eModel').value.trim(),
+        lastPM: document.getElementById('eLastPM').value ? ARS.fmtDate(document.getElementById('eLastPM').value) : undefined,
+        nextPM: document.getElementById('eNextPM').value ? ARS.fmtDate(document.getElementById('eNextPM').value) : undefined,
+        status: document.getElementById('eStatus').value,
+      });
+      closeModal('editTruckModal');
+      showToast('Truck updated', 'success');
+      render();
+    });
+  });
+</script>
+</body>
+</html>

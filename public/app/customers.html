@@ -3,6 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <title>Customers | Alex Road Service Ops</title>
   <link rel="stylesheet" href="/app/css/app.css">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
@@ -19,34 +21,34 @@
         <div class="page-header__sub">Manage customer accounts and service history</div>
       </div>
       <div class="page-header__actions">
-        <button class="btn btn--secondary btn--sm"><i class="fas fa-download"></i> Export</button>
-        <button class="btn btn--primary" onclick="openModal('addCustomerModal')"><i class="fas fa-plus"></i> Add Customer</button>
+        <button class="btn btn--secondary btn--sm" id="exportBtn"><i class="fas fa-download"></i> Export</button>
+        <button class="btn btn--primary" id="addCustBtn" onclick="openModal('addCustomerModal')"><i class="fas fa-plus"></i> Add Customer</button>
       </div>
     </div>
 
     <!-- KPI Row -->
-    <div class="kpi-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:18px">
+    <div class="kpi-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:18px" id="custKpis">
       <div class="kpi-card">
         <div class="kpi-card__row">
-          <div><div class="kpi-card__label">Total Customers</div><div class="kpi-card__value">8</div></div>
+          <div><div class="kpi-card__label">Total Customers</div><div class="kpi-card__value" id="kpiTotal">—</div></div>
           <div class="kpi-card__icon blue"><i class="fas fa-users"></i></div>
         </div>
       </div>
       <div class="kpi-card">
         <div class="kpi-card__row">
-          <div><div class="kpi-card__label">Fleet Accounts</div><div class="kpi-card__value blue">5</div></div>
+          <div><div class="kpi-card__label">Fleet Accounts</div><div class="kpi-card__value blue" id="kpiFleet">—</div></div>
           <div class="kpi-card__icon blue"><i class="fas fa-building"></i></div>
         </div>
       </div>
       <div class="kpi-card">
         <div class="kpi-card__row">
-          <div><div class="kpi-card__label">Owner-Operators</div><div class="kpi-card__value">3</div></div>
+          <div><div class="kpi-card__label">Owner-Operators</div><div class="kpi-card__value" id="kpiOwner">—</div></div>
           <div class="kpi-card__icon amber"><i class="fas fa-user"></i></div>
         </div>
       </div>
       <div class="kpi-card">
         <div class="kpi-card__row">
-          <div><div class="kpi-card__label">Active</div><div class="kpi-card__value green">7</div></div>
+          <div><div class="kpi-card__label">Active</div><div class="kpi-card__value green" id="kpiActive">—</div></div>
           <div class="kpi-card__icon green"><i class="fas fa-check-circle"></i></div>
         </div>
       </div>
@@ -92,25 +94,22 @@
     </div>
     <div class="modal__body">
       <div class="form-row-2">
-        <div class="form-row"><label class="form-label">First Name *</label><input class="form-input" placeholder="First name"></div>
-        <div class="form-row"><label class="form-label">Last Name *</label><input class="form-input" placeholder="Last name"></div>
+        <div class="form-row"><label class="form-label">First Name *</label><input class="form-input" id="cFirst" placeholder="First name"></div>
+        <div class="form-row"><label class="form-label">Last Name *</label><input class="form-input" id="cLast" placeholder="Last name"></div>
       </div>
-      <div class="form-row"><label class="form-label">Company Name</label><input class="form-input" placeholder="Optional — leave blank for owner-operators"></div>
+      <div class="form-row"><label class="form-label">Company Name</label><input class="form-input" id="cCompany" placeholder="Optional — leave blank for owner-operators"></div>
       <div class="form-row-2">
-        <div class="form-row"><label class="form-label">Phone *</label><input class="form-input" type="tel" placeholder="(___) ___-____"></div>
-        <div class="form-row"><label class="form-label">Email</label><input class="form-input" type="email" placeholder="email@example.com"></div>
+        <div class="form-row"><label class="form-label">Phone *</label><input class="form-input" id="cPhone" type="tel" placeholder="(___) ___-____"></div>
+        <div class="form-row"><label class="form-label">Email</label><input class="form-input" id="cEmail" type="email" placeholder="email@example.com"></div>
       </div>
       <div class="form-row-2">
         <div class="form-row">
           <label class="form-label">Customer Type</label>
-          <select class="form-select">
-            <option>Fleet</option>
-            <option>Owner-Op</option>
-          </select>
+          <select class="form-select" id="cType"><option>Fleet</option><option>Owner-Op</option></select>
         </div>
-        <div class="form-row"><label class="form-label">Number of Trucks</label><input class="form-input" type="number" placeholder="1" min="1"></div>
+        <div class="form-row"><label class="form-label">Number of Trucks</label><input class="form-input" id="cTrucks" type="number" placeholder="1" min="1" value="1"></div>
       </div>
-      <div class="form-row"><label class="form-label">Notes</label><textarea class="form-textarea" placeholder="Any notes about this customer…"></textarea></div>
+      <div class="form-row"><label class="form-label">Notes</label><textarea class="form-textarea" id="cNotes" placeholder="Any notes about this customer…"></textarea></div>
     </div>
     <div class="modal__footer">
       <button class="btn btn--secondary" data-close-modal>Cancel</button>
@@ -119,20 +118,31 @@
   </div>
 </div>
 
-<script src="/app/js/mock-data.js"></script>
+<script src="/app/js/utils.js"></script>
+<script src="/app/js/data-store.js"></script>
+<script src="/app/js/auth.js"></script>
+<script src="/app/js/data-service.js"></script>
+<script src="/app/js/page-scripts.js"></script>
 <script src="/app/js/app-components.js"></script>
 <script>
-  let activeFilter = 'all';
-  let searchVal = '';
+  let activeFilter = 'all', searchVal = '';
+
+  function renderKpis(all) {
+    document.getElementById('kpiTotal').textContent = all.length;
+    document.getElementById('kpiFleet').textContent = all.filter(c => c.type === 'Fleet').length;
+    document.getElementById('kpiOwner').textContent = all.filter(c => c.type === 'Owner-Op').length;
+    document.getElementById('kpiActive').textContent = all.filter(c => c.status === 'Active').length;
+  }
 
   function renderTable() {
-    const data = CUSTOMERS.filter(c => {
-      const matchFilter = activeFilter === 'all' || c.type === activeFilter || c.status === activeFilter;
-      const q = searchVal.toLowerCase();
-      const matchSearch = !q || c.name.toLowerCase().includes(q) || (c.company||'').toLowerCase().includes(q) || c.phone.includes(q);
-      return matchFilter && matchSearch;
-    });
-    document.getElementById('custCount').textContent = `${data.length} result${data.length!==1?'s':''}`;
+    const filters = { q: searchVal };
+    if (activeFilter === 'Inactive') filters.status = 'Inactive';
+    else if (activeFilter !== 'all') filters.type = activeFilter;
+    const data = ARS.Data.listCustomers(filters);
+    const all = ARS.Data.listCustomers();
+    renderKpis(all);
+    document.getElementById('custCount').textContent = `${data.length} result${data.length !== 1 ? 's' : ''}`;
+    const canEdit = ARS.can('customers.create');
     document.getElementById('custTable').innerHTML = data.length ? data.map(c => `
       <tr>
         <td class="td-mono td-muted">${c.id}</td>
@@ -145,33 +155,54 @@
         <td class="td-bold">${c.spent}</td>
         <td>${chip(c.status)}</td>
         <td class="td-actions">
-          <button class="btn btn--ghost btn--sm btn--icon" title="View"><i class="fas fa-eye"></i></button>
-          <button class="btn btn--ghost btn--sm btn--icon" title="Edit"><i class="fas fa-pencil-alt"></i></button>
+          <a class="btn btn--ghost btn--sm btn--icon" href="/app/customer-detail.html?id=${c.id}" title="View"><i class="fas fa-eye"></i></a>
+          ${canEdit ? `<button class="btn btn--ghost btn--sm btn--icon" onclick="deactivateCust('${c.id}')" title="Deactivate"><i class="fas fa-user-slash"></i></button>` : ''}
         </td>
-      </tr>
-    `).join('') : `<tr><td colspan="10"><div class="empty-state"><div class="empty-state__icon"><i class="fas fa-users"></i></div><div class="empty-state__title">No customers found</div><div class="empty-state__desc">Try a different filter or search term.</div></div></td></tr>`;
+      </tr>`).join('') : `<tr><td colspan="10"><div class="empty-state"><div class="empty-state__icon"><i class="fas fa-users"></i></div><div class="empty-state__title">No customers found</div></div></td></tr>`;
   }
 
-  document.addEventListener('DOMContentLoaded', () => {
+  window.deactivateCust = (id) => {
+    if (!ARS.can('customers.deactivate')) return showToast('Permission denied', 'error');
+    if (!confirm('Deactivate this customer?')) return;
+    ARS.Data.deactivateCustomer(id);
     renderTable();
+    showToast('Customer deactivated', 'success');
+  };
 
-    document.getElementById('custFilterTabs').addEventListener('click', e => {
-      const btn = e.target.closest('.filter-tab');
-      if (!btn) return;
-      document.querySelectorAll('#custFilterTabs .filter-tab').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      activeFilter = btn.dataset.filter;
+  ARS.Pages.waitReady(() => {
+    if (!ARS.can('customers.create')) document.getElementById('addCustBtn')?.remove();
+    renderTable();
+    ARS.Pages.bindFilters('custFilterTabs', 'custSearch', 'custCount', ({ filter, q }) => {
+      if (filter !== undefined) activeFilter = filter;
+      if (q !== undefined) searchVal = q;
       renderTable();
     });
-
-    document.getElementById('custSearch').addEventListener('input', e => {
-      searchVal = e.target.value;
-      renderTable();
+    document.addEventListener('ars:data-changed', renderTable);
+    document.getElementById('exportBtn')?.addEventListener('click', () => {
+      const rows = ARS.Data.listCustomers().map(c => [c.id, c.name, c.company, c.phone, c.type, c.trucks, c.spent, c.status]);
+      ARS.exportCSV('customers.csv', ['ID','Name','Company','Phone','Type','Trucks','Spent','Status'], rows);
     });
-
-    document.getElementById('saveCustomerBtn').addEventListener('click', () => {
-      closeModal('addCustomerModal');
-      showToast('Customer added successfully!', 'success');
+    document.getElementById('saveCustomerBtn')?.addEventListener('click', async () => {
+      if (!ARS.can('customers.create')) return showToast('Permission denied', 'error');
+      const firstName = document.getElementById('cFirst').value.trim();
+      const lastName = document.getElementById('cLast').value.trim();
+      const phone = document.getElementById('cPhone').value.trim();
+      if (!firstName || !lastName || !phone) return showToast('Name and phone required', 'error');
+      try {
+        await ARS.Data.createCustomer({
+          firstName, lastName, phone,
+          company: document.getElementById('cCompany').value.trim(),
+          email: document.getElementById('cEmail').value.trim(),
+          type: document.getElementById('cType').value,
+          truckCount: document.getElementById('cTrucks').value,
+          notes: document.getElementById('cNotes').value.trim(),
+        });
+        closeModal('addCustomerModal');
+        renderTable();
+        showToast('Customer added successfully!', 'success');
+      } catch (e) {
+        showToast(e.message, 'error');
+      }
     });
   });
 </script>

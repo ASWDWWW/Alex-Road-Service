@@ -1,358 +1,734 @@
 <!DOCTYPE html>
+
 <html lang="en">
+
 <head>
+
   <meta charset="UTF-8">
+
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+
   <title>Reports | Alex Road Service Ops</title>
+
   <link rel="stylesheet" href="/app/css/app.css">
+
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+
   <style>
-    .report-section { margin-bottom: 22px; }
-    .report-section-title {
-      font-family: var(--font-head); font-size: 1.1rem; letter-spacing: .04em;
-      color: var(--black); margin-bottom: 14px;
-      display: flex; align-items: center; gap: 10px;
-    }
-    .report-section-title i { color: var(--red); font-size: .95rem; }
 
     .chart-month-label { font-size: .78rem; font-weight: 700; color: var(--steel); width: 40px; text-align: right; flex-shrink: 0; }
 
     .top-list { display: flex; flex-direction: column; gap: 10px; }
+
     .top-list-item {
+
       display: flex; align-items: center; gap: 12px;
+
       padding: 10px 14px; border-radius: 8px; background: var(--off-white);
+
     }
+
     .top-list-rank {
+
       width: 22px; height: 22px; border-radius: 50%;
+
       background: var(--red); color: white;
+
       font-size: .7rem; font-weight: 700;
+
       display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+
     }
+
     .top-list-rank.gold   { background: #D97706; }
+
     .top-list-rank.silver { background: #9CA3AF; }
+
     .top-list-rank.bronze { background: #92400E; }
+
     .top-list-name  { flex: 1; font-size: .85rem; font-weight: 600; }
+
     .top-list-value { font-weight: 700; font-size: .9rem; color: var(--black); }
 
     .service-bar-label { width: 170px; font-size: .8rem; font-weight: 500; color: var(--steel); flex-shrink: 0; }
+
+    .aging-bucket { display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; border-radius: 7px; }
+
+    .aging-bucket--current { background: #ECFDF5; color: #065F46; }
+
+    .aging-bucket--30 { background: #FEF3C7; color: #92400E; }
+
+    .aging-bucket--60 { background: #FFEDD5; color: #9A3412; }
+
+    .aging-bucket--90 { background: #FEF2F2; color: #991B1B; }
+
   </style>
+
 </head>
+
 <body class="app-body">
+
 <div id="sidebar-placeholder"></div>
+
 <main class="app-main">
+
   <div id="topbar-placeholder" data-title="Reports"></div>
+
   <div class="app-content">
 
+
+
     <div class="page-header">
+
       <div>
+
         <div class="page-header__title">Reports &amp; Analytics</div>
-        <div class="page-header__sub">Business performance for Jan – Mar 2026</div>
+
+        <div class="page-header__sub" id="reportSubtitle">Business performance</div>
+
       </div>
+
       <div class="page-header__actions">
-        <select class="form-select" style="width:160px;height:36px;font-size:.82rem" id="reportRange">
-          <option>Q1 2026 (Jan–Mar)</option>
-          <option>Last 30 Days</option>
-          <option>Year to Date</option>
+
+        <select class="form-select" style="width:180px;height:36px;font-size:.82rem" id="reportRange">
+
+          <option value="quarter">Current Quarter</option>
+
+          <option value="30">Last 30 Days</option>
+
+          <option value="ytd">Year to Date</option>
+
         </select>
-        <button class="btn btn--secondary btn--sm"><i class="fas fa-download"></i> Export PDF</button>
+
+        <button class="btn btn--secondary btn--sm" id="reportCsvBtn"><i class="fas fa-download"></i> Export CSV</button>
+
       </div>
+
     </div>
 
-    <!-- KPI Summary Row -->
+
+
     <div class="kpi-grid" style="margin-bottom:22px">
+
       <div class="kpi-card">
+
         <div class="kpi-card__row">
-          <div><div class="kpi-card__label">Total Revenue (Q1)</div><div class="kpi-card__value green">$13,980</div></div>
+
+          <div><div class="kpi-card__label" id="kpiRevenueLabel">Total Revenue</div><div class="kpi-card__value green" id="kpiReportRevenue">$0</div></div>
+
           <div class="kpi-card__icon green"><i class="fas fa-dollar-sign"></i></div>
+
         </div>
-        <div class="kpi-card__trend"><i class="fas fa-arrow-up up"></i><span>+18% vs Q4 2025</span></div>
+
+        <div class="kpi-card__trend" id="kpiRevenueTrend"><span>From recorded payments</span></div>
+
       </div>
+
       <div class="kpi-card">
+
         <div class="kpi-card__row">
-          <div><div class="kpi-card__label">Work Orders Completed</div><div class="kpi-card__value">18</div></div>
+
+          <div><div class="kpi-card__label">Work Orders Completed</div><div class="kpi-card__value" id="kpiReportJobs">0</div></div>
+
           <div class="kpi-card__icon blue"><i class="fas fa-clipboard-check"></i></div>
+
         </div>
-        <div class="kpi-card__trend"><i class="fas fa-arrow-up up"></i><span>+3 vs last quarter</span></div>
+
+        <div class="kpi-card__trend" id="kpiJobsTrend"><span>In selected period</span></div>
+
       </div>
+
       <div class="kpi-card">
+
         <div class="kpi-card__row">
-          <div><div class="kpi-card__label">Avg Revenue / Job</div><div class="kpi-card__value">$776</div></div>
+
+          <div><div class="kpi-card__label">Avg Revenue / Job</div><div class="kpi-card__value" id="kpiReportAvg">$0</div></div>
+
           <div class="kpi-card__icon amber"><i class="fas fa-chart-line"></i></div>
+
         </div>
-        <div class="kpi-card__trend"><span>Labor avg: $268 · Parts avg: $508</span></div>
+
+        <div class="kpi-card__trend" id="kpiAvgTrend"><span>—</span></div>
+
       </div>
+
       <div class="kpi-card">
+
         <div class="kpi-card__row">
-          <div><div class="kpi-card__label">Collection Rate</div><div class="kpi-card__value green">88%</div></div>
+
+          <div><div class="kpi-card__label">Collection Rate</div><div class="kpi-card__value green" id="kpiReportCollection">0%</div></div>
+
           <div class="kpi-card__icon green"><i class="fas fa-hand-holding-usd"></i></div>
+
         </div>
-        <div class="kpi-card__trend"><span>$1,410 outstanding</span></div>
+
+        <div class="kpi-card__trend" id="kpiCollectionTrend"><span>—</span></div>
+
       </div>
+
     </div>
 
-    <!-- Charts Grid -->
+
+
     <div class="grid-2" style="margin-bottom:22px">
 
-      <!-- Monthly Revenue Bar Chart -->
       <div class="app-card">
+
         <div class="app-card__header">
-          <div class="app-card__title"><i class="fas fa-chart-bar" style="color:var(--red);margin-right:8px"></i>Monthly Revenue — Q1 2026</div>
+
+          <div class="app-card__title" id="revenueChartTitle"><i class="fas fa-chart-bar" style="color:var(--red);margin-right:8px"></i>Monthly Revenue</div>
+
         </div>
+
         <div class="app-card__body">
-          <div class="bar-chart" id="revenueChart">
-            <div class="bar-row">
-              <div class="chart-month-label">Jan</div>
-              <div class="bar-track"><div class="bar-fill" style="width:65%"><span class="bar-value">$3,920</span></div></div>
-            </div>
-            <div class="bar-row">
-              <div class="chart-month-label">Feb</div>
-              <div class="bar-track"><div class="bar-fill" style="width:78%"><span class="bar-value">$4,930</span></div></div>
-            </div>
-            <div class="bar-row">
-              <div class="chart-month-label">Mar</div>
-              <div class="bar-track"><div class="bar-fill bar-fill--blue" style="width:43%"><span class="bar-value">$5,130</span></div></div>
-            </div>
-          </div>
+
+          <div class="bar-chart" id="revenueChart"></div>
+
           <div style="margin-top:18px;border-top:1px solid var(--border);padding-top:14px;display:flex;justify-content:space-between">
-            <div style="font-size:.8rem;color:var(--steel)">Q1 Total</div>
-            <div style="font-family:var(--font-head);font-size:1.4rem;color:var(--black)">$13,980</div>
+
+            <div style="font-size:.8rem;color:var(--steel)">Period Total</div>
+
+            <div style="font-family:var(--font-head);font-size:1.4rem;color:var(--black)" id="revenueTotal">$0</div>
+
           </div>
+
         </div>
+
       </div>
 
-      <!-- Service Type Breakdown -->
+
+
       <div class="app-card">
+
         <div class="app-card__header">
-          <div class="app-card__title"><i class="fas fa-tools" style="color:var(--red);margin-right:8px"></i>Top Service Categories (Q1)</div>
+
+          <div class="app-card__title" id="serviceChartTitle"><i class="fas fa-tools" style="color:var(--red);margin-right:8px"></i>Revenue by Service Type</div>
+
         </div>
+
         <div class="app-card__body">
-          <div class="bar-chart">
-            <div class="bar-row">
-              <div class="service-bar-label">Air Brake / Systems</div>
-              <div class="bar-track"><div class="bar-fill" style="width:82%"><span class="bar-value">$3,480</span></div></div>
-            </div>
-            <div class="bar-row">
-              <div class="service-bar-label">Preventive Maintenance</div>
-              <div class="bar-track"><div class="bar-fill bar-fill--blue" style="width:54%"><span class="bar-value">$2,940</span></div></div>
-            </div>
-            <div class="bar-row">
-              <div class="service-bar-label">Electrical</div>
-              <div class="bar-track"><div class="bar-fill bar-fill--green" style="width:48%"><span class="bar-value">$2,620</span></div></div>
-            </div>
-            <div class="bar-row">
-              <div class="service-bar-label">Radiator / Cooling</div>
-              <div class="bar-track"><div class="bar-fill bar-fill--amber" style="width:35%"><span class="bar-value">$1,890</span></div></div>
-            </div>
-            <div class="bar-row">
-              <div class="service-bar-label">Fuel System</div>
-              <div class="bar-track"><div class="bar-fill bar-fill--blue" style="width:18%"><span class="bar-value">$1,050</span></div></div>
-            </div>
-            <div class="bar-row">
-              <div class="service-bar-label">Other / Emergency</div>
-              <div class="bar-track"><div class="bar-fill" style="width:12%;background:#9CA3AF"><span class="bar-value">$2,000</span></div></div>
-            </div>
-          </div>
+
+          <div class="bar-chart" id="serviceChart"></div>
+
         </div>
+
       </div>
 
     </div>
 
-    <!-- Bottom Row: Top Customers + Tech Performance + AR Aging -->
+
+
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:22px">
 
-      <!-- Top Customers -->
       <div class="app-card">
+
         <div class="app-card__header">
+
           <div class="app-card__title"><i class="fas fa-trophy" style="color:var(--red);margin-right:8px"></i>Top Customers</div>
+
         </div>
-        <div class="app-card__body">
-          <div class="top-list">
-            <div class="top-list-item">
-              <div class="top-list-rank gold">1</div>
-              <div class="top-list-name">WashEx Logistics</div>
-              <div class="top-list-value">$9,120</div>
-            </div>
-            <div class="top-list-item">
-              <div class="top-list-rank silver">2</div>
-              <div class="top-list-name">James Construction</div>
-              <div class="top-list-value">$6,380</div>
-            </div>
-            <div class="top-list-item">
-              <div class="top-list-rank bronze">3</div>
-              <div class="top-list-name">Reid Trucking LLC</div>
-              <div class="top-list-value">$4,820</div>
-            </div>
-            <div class="top-list-item">
-              <div class="top-list-rank" style="background:#D1D5DB;color:#374151">4</div>
-              <div class="top-list-name">Lopez Distribution</div>
-              <div class="top-list-value">$2,145</div>
-            </div>
-            <div class="top-list-item">
-              <div class="top-list-rank" style="background:#D1D5DB;color:#374151">5</div>
-              <div class="top-list-name">Kim Brothers Inc.</div>
-              <div class="top-list-value">$1,650</div>
-            </div>
-          </div>
-        </div>
+
+        <div class="app-card__body" id="topCustomers"></div>
+
       </div>
 
-      <!-- Technician Performance -->
+
+
       <div class="app-card">
+
         <div class="app-card__header">
-          <div class="app-card__title"><i class="fas fa-hard-hat" style="color:var(--red);margin-right:8px"></i>Technician Output (Q1)</div>
+
+          <div class="app-card__title" id="techChartTitle"><i class="fas fa-hard-hat" style="color:var(--red);margin-right:8px"></i>Technician Output</div>
+
         </div>
-        <div class="app-card__body">
-          <div style="display:flex;flex-direction:column;gap:14px">
-            <div>
-              <div style="display:flex;justify-content:space-between;margin-bottom:5px">
-                <span style="font-size:.82rem;font-weight:600">Mike Santos</span>
-                <span style="font-size:.78rem;color:var(--warm-gray)">8 jobs · $5,720</span>
-              </div>
-              <div style="height:8px;background:rgba(0,0,0,.07);border-radius:4px;overflow:hidden">
-                <div style="height:100%;width:82%;background:var(--red);border-radius:4px"></div>
-              </div>
-            </div>
-            <div>
-              <div style="display:flex;justify-content:space-between;margin-bottom:5px">
-                <span style="font-size:.82rem;font-weight:600">Jose Rivera</span>
-                <span style="font-size:.78rem;color:var(--warm-gray)">6 jobs · $4,380</span>
-              </div>
-              <div style="height:8px;background:rgba(0,0,0,.07);border-radius:4px;overflow:hidden">
-                <div style="height:100%;width:63%;background:#1D4ED8;border-radius:4px"></div>
-              </div>
-            </div>
-            <div>
-              <div style="display:flex;justify-content:space-between;margin-bottom:5px">
-                <span style="font-size:.82rem;font-weight:600">Tom Ellis</span>
-                <span style="font-size:.78rem;color:var(--warm-gray)">4 jobs · $3,880</span>
-              </div>
-              <div style="height:8px;background:rgba(0,0,0,.07);border-radius:4px;overflow:hidden">
-                <div style="height:100%;width:55%;background:#059669;border-radius:4px"></div>
-              </div>
-            </div>
-            <div class="divider"></div>
-            <div style="display:flex;justify-content:space-between;font-size:.82rem">
-              <span style="color:var(--steel)">Total Labor Hours</span>
-              <span style="font-weight:700">~174 hrs</span>
-            </div>
-            <div style="display:flex;justify-content:space-between;font-size:.82rem">
-              <span style="color:var(--steel)">Avg Hours / Job</span>
-              <span style="font-weight:700">~9.7 hrs</span>
-            </div>
-          </div>
-        </div>
+
+        <div class="app-card__body" id="techPerformance"></div>
+
       </div>
 
-      <!-- AR Aging -->
+
+
       <div class="app-card">
+
         <div class="app-card__header">
+
           <div class="app-card__title"><i class="fas fa-calendar-times" style="color:var(--red);margin-right:8px"></i>Accounts Receivable Aging</div>
+
         </div>
-        <div class="app-card__body">
-          <div style="display:flex;flex-direction:column;gap:12px">
-            <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;background:#ECFDF5;border-radius:7px">
-              <div>
-                <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;color:#065F46;letter-spacing:.05em">Current (0–30 days)</div>
-                <div style="font-size:.78rem;color:#065F46;margin-top:2px">INV-010, INV-009</div>
-              </div>
-              <div style="font-family:var(--font-head);font-size:1.3rem;color:#065F46">$675</div>
-            </div>
-            <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;background:#FEF3C7;border-radius:7px">
-              <div>
-                <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;color:#92400E;letter-spacing:.05em">31–60 Days Overdue</div>
-                <div style="font-size:.78rem;color:#92400E;margin-top:2px">INV-004 · Reid Trucking</div>
-              </div>
-              <div style="font-family:var(--font-head);font-size:1.3rem;color:#D97706">$160</div>
-            </div>
-            <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;background:#FEF2F2;border-radius:7px">
-              <div>
-                <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;color:#991B1B;letter-spacing:.05em">60+ Days Overdue</div>
-                <div style="font-size:.78rem;color:#991B1B;margin-top:2px">INV-003 · James Construction</div>
-              </div>
-              <div style="font-family:var(--font-head);font-size:1.3rem;color:var(--red)">$1,250</div>
-            </div>
-            <div class="divider"></div>
-            <div style="display:flex;justify-content:space-between;align-items:center">
-              <span style="font-weight:700;font-size:.85rem">Total Outstanding</span>
-              <span style="font-family:var(--font-head);font-size:1.4rem;color:var(--red)">$2,085</span>
-            </div>
-          </div>
-        </div>
+
+        <div class="app-card__body" id="arAging"></div>
+
       </div>
 
     </div>
 
-    <!-- Summary table: All Work Orders Q1 summary -->
+
+
     <div class="app-card">
+
       <div class="app-card__header">
-        <div class="app-card__title"><i class="fas fa-table" style="color:var(--red);margin-right:8px"></i>Work Order Revenue Summary (Q1 2026)</div>
-        <button class="btn btn--ghost btn--sm"><i class="fas fa-download"></i> CSV</button>
+
+        <div class="app-card__title" id="woSummaryTitle"><i class="fas fa-table" style="color:var(--red);margin-right:8px"></i>Work Order Revenue Summary</div>
+
+        <button class="btn btn--ghost btn--sm" id="woSummaryCsvBtn"><i class="fas fa-download"></i> CSV</button>
+
       </div>
+
       <div class="table-wrap" style="border:none;border-radius:0">
+
         <table>
+
           <thead>
+
             <tr><th>Month</th><th>Jobs</th><th>Labor Revenue</th><th>Parts Revenue</th><th>Total Revenue</th><th>Avg / Job</th></tr>
+
           </thead>
-          <tbody>
-            <tr>
-              <td class="td-bold">January 2026</td>
-              <td style="text-align:center">5</td>
-              <td style="text-align:right">$1,480</td>
-              <td style="text-align:right">$2,440</td>
-              <td style="text-align:right;font-weight:700">$3,920</td>
-              <td style="text-align:right;color:var(--steel)">$784</td>
-            </tr>
-            <tr>
-              <td class="td-bold">February 2026</td>
-              <td style="text-align:center">7</td>
-              <td style="text-align:right">$1,840</td>
-              <td style="text-align:right">$3,090</td>
-              <td style="text-align:right;font-weight:700">$4,930</td>
-              <td style="text-align:right;color:var(--steel)">$704</td>
-            </tr>
-            <tr style="background:#FAFBFC">
-              <td class="td-bold">March 2026 <span style="font-size:.7rem;font-weight:400;color:var(--warm-gray)">(MTD)</span></td>
-              <td style="text-align:center">6</td>
-              <td style="text-align:right">$1,560</td>
-              <td style="text-align:right">$3,570</td>
-              <td style="text-align:right;font-weight:700">$5,130</td>
-              <td style="text-align:right;color:var(--steel)">$855</td>
-            </tr>
-            <tr style="background:rgba(229,31,43,.04);font-weight:700">
-              <td style="font-family:var(--font-head);font-size:.95rem">Q1 TOTAL</td>
-              <td style="text-align:center">18</td>
-              <td style="text-align:right">$4,880</td>
-              <td style="text-align:right">$9,100</td>
-              <td style="text-align:right;font-family:var(--font-head);font-size:1.05rem;color:var(--red)">$13,980</td>
-              <td style="text-align:right;color:var(--steel)">$776</td>
-            </tr>
-          </tbody>
+
+          <tbody id="woSummaryTable"></tbody>
+
         </table>
+
       </div>
+
     </div>
+
+
 
   </div>
+
 </main>
 
-<script src="/app/js/mock-data.js"></script>
-<script src="/app/js/app-components.js"></script>
-<script>
-  document.addEventListener('DOMContentLoaded', () => {
-    /* Animate bar fills on load */
-    setTimeout(() => {
-      document.querySelectorAll('.bar-fill').forEach(bar => {
-        const w = bar.style.width;
-        bar.style.width = '0%';
-        requestAnimationFrame(() => {
-          setTimeout(() => { bar.style.width = w; }, 50);
-        });
-      });
-    }, 200);
 
-    document.getElementById('reportRange').addEventListener('change', () => {
-      showToast('Report range updated', 'info');
+
+<script src="/app/js/utils.js?v=20260609c"></script>
+
+<script src="/app/js/data-store.js?v=20260609c"></script>
+
+<script src="/app/js/auth.js?v=20260609c"></script>
+
+<script src="/app/js/data-service.js?v=20260609c"></script>
+
+<script src="/app/js/page-scripts.js?v=20260609c"></script>
+
+<script src="/app/js/app-components.js?v=20260609c"></script>
+
+<script>
+
+  const TECH_COLORS = ['var(--red)', '#1D4ED8', '#059669', '#D97706', '#7C3AED'];
+
+  const RANK_CLASS = ['gold', 'silver', 'bronze', '', ''];
+
+  let lastReport = null;
+
+
+
+  function emptyState(msg) {
+
+    return `<div style="padding:16px;color:var(--steel);font-size:.85rem">${msg}</div>`;
+
+  }
+
+
+
+  function renderRevenueChart(revenue, total) {
+
+    const el = document.getElementById('revenueChart');
+
+    if (!revenue.length) {
+
+      el.innerHTML = emptyState('No payment data for this period');
+
+      document.getElementById('revenueTotal').textContent = fmt$(0);
+
+      return;
+
+    }
+
+    const max = Math.max(...revenue.map((r) => r.total), 1);
+
+    el.innerHTML = revenue.map((r, i) => `
+
+      <div class="bar-row">
+
+        <div class="chart-month-label">${r.label}</div>
+
+        <div class="bar-track"><div class="bar-fill${i === revenue.length - 1 ? ' bar-fill--blue' : ''}" style="width:${Math.round((r.total / max) * 100)}%"><span class="bar-value">${fmt$(r.total)}</span></div></div>
+
+      </div>
+
+    `).join('');
+
+    document.getElementById('revenueTotal').textContent = fmt$(total);
+
+  }
+
+
+
+  function renderServiceChart(categories) {
+
+    const el = document.getElementById('serviceChart');
+
+    if (!categories.length) {
+
+      el.innerHTML = emptyState('No completed work orders in this period');
+
+      return;
+
+    }
+
+    const max = Math.max(...categories.map((c) => c.total), 1);
+
+    const fills = ['', ' bar-fill--blue', ' bar-fill--green', ' bar-fill--amber', ' bar-fill--blue', ''];
+
+    el.innerHTML = categories.map((c, i) => `
+
+      <div class="bar-row">
+
+        <div class="service-bar-label">${c.name}</div>
+
+        <div class="bar-track"><div class="bar-fill${fills[i % fills.length]}" style="width:${Math.round((c.total / max) * 100)}%${i === fills.length - 1 ? ';background:#9CA3AF' : ''}"><span class="bar-value">${fmt$(c.total)}</span></div></div>
+
+      </div>
+
+    `).join('');
+
+  }
+
+
+
+  function renderTopCustomers(customers) {
+
+    const el = document.getElementById('topCustomers');
+
+    if (!customers.length) {
+
+      el.innerHTML = emptyState('No customer payments in this period');
+
+      return;
+
+    }
+
+    el.innerHTML = `<div class="top-list">${customers.map((c, i) => `
+
+      <div class="top-list-item">
+
+        <div class="top-list-rank ${RANK_CLASS[i] || ''}"${!RANK_CLASS[i] ? ' style="background:#D1D5DB;color:#374151"' : ''}>${i + 1}</div>
+
+        <div class="top-list-name">${c.name}</div>
+
+        <div class="top-list-value">${fmt$(c.total)}</div>
+
+      </div>
+
+    `).join('')}</div>`;
+
+  }
+
+
+
+  function renderTechPerformance(tech) {
+
+    const el = document.getElementById('techPerformance');
+
+    if (!tech.length) {
+
+      el.innerHTML = emptyState('No technician data for this period');
+
+      return;
+
+    }
+
+    const maxRev = Math.max(...tech.map((t) => t.revenue), 1);
+
+    el.innerHTML = `
+
+      <div style="display:flex;flex-direction:column;gap:14px">
+
+        ${tech.map((t, i) => `
+
+          <div>
+
+            <div style="display:flex;justify-content:space-between;margin-bottom:5px">
+
+              <span style="font-size:.82rem;font-weight:600">${t.tech}</span>
+
+              <span style="font-size:.78rem;color:var(--warm-gray)">${t.completed} jobs · ${fmt$(t.revenue)}</span>
+
+            </div>
+
+            <div style="height:8px;background:rgba(0,0,0,.07);border-radius:4px;overflow:hidden">
+
+              <div style="height:100%;width:${Math.round((t.revenue / maxRev) * 100)}%;background:${TECH_COLORS[i % TECH_COLORS.length]};border-radius:4px"></div>
+
+            </div>
+
+          </div>
+
+        `).join('')}
+
+        <div class="divider"></div>
+
+        <div style="display:flex;justify-content:space-between;font-size:.82rem">
+
+          <span style="color:var(--steel)">Total Completed Jobs</span>
+
+          <span style="font-weight:700">${tech.reduce((s, t) => s + t.completed, 0)}</span>
+
+        </div>
+
+      </div>`;
+
+  }
+
+
+
+  function renderARAging(aging, outstanding) {
+
+    const el = document.getElementById('arAging');
+
+    const buckets = [
+
+      { key: 'current', cls: 'aging-bucket--current', amtColor: '#065F46' },
+
+      { key: 'days30', cls: 'aging-bucket--30', amtColor: '#D97706' },
+
+      { key: 'days60', cls: 'aging-bucket--60', amtColor: '#EA580C' },
+
+      { key: 'days90', cls: 'aging-bucket--90', amtColor: 'var(--red)' },
+
+    ];
+
+    const hasData = buckets.some((b) => aging[b.key].total > 0);
+
+    if (!hasData) {
+
+      el.innerHTML = emptyState('No outstanding invoices');
+
+      return;
+
+    }
+
+    el.innerHTML = `
+
+      <div style="display:flex;flex-direction:column;gap:12px">
+
+        ${buckets.filter((b) => aging[b.key].total > 0).map((b) => {
+
+          const bucket = aging[b.key];
+
+          const desc = bucket.items.slice(0, 2).map((i) => `${i.id} · ${i.customerName}`).join(', ');
+
+          return `
+
+            <div class="aging-bucket ${b.cls}">
+
+              <div>
+
+                <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em">${bucket.label}</div>
+
+                <div style="font-size:.78rem;margin-top:2px;opacity:.85">${desc || '—'}${bucket.items.length > 2 ? '…' : ''}</div>
+
+              </div>
+
+              <div style="font-family:var(--font-head);font-size:1.3rem;color:${b.amtColor}">${fmt$(bucket.total)}</div>
+
+            </div>`;
+
+        }).join('')}
+
+        <div class="divider"></div>
+
+        <div style="display:flex;justify-content:space-between;align-items:center">
+
+          <span style="font-weight:700;font-size:.85rem">Total Outstanding</span>
+
+          <span style="font-family:var(--font-head);font-size:1.4rem;color:var(--red)">${fmt$(outstanding)}</span>
+
+        </div>
+
+      </div>`;
+
+  }
+
+
+
+  function renderWoSummary(rows, totals) {
+
+    const tbody = document.getElementById('woSummaryTable');
+
+    if (!rows.length) {
+
+      tbody.innerHTML = `<tr><td colspan="6">${emptyState('No completed work orders in this period')}</td></tr>`;
+
+      return;
+
+    }
+
+    const rowHtml = rows.map((r) => `
+
+      <tr>
+
+        <td class="td-bold">${r.month}</td>
+
+        <td style="text-align:center">${r.jobs}</td>
+
+        <td style="text-align:right">${fmt$(r.labor)}</td>
+
+        <td style="text-align:right">${fmt$(r.parts)}</td>
+
+        <td style="text-align:right;font-weight:700">${fmt$(r.total)}</td>
+
+        <td style="text-align:right;color:var(--steel)">${fmt$(r.jobs ? r.total / r.jobs : 0)}</td>
+
+      </tr>
+
+    `).join('');
+
+    const totalRow = totals.jobs ? `
+
+      <tr style="background:rgba(229,31,43,.04);font-weight:700">
+
+        <td style="font-family:var(--font-head);font-size:.95rem">PERIOD TOTAL</td>
+
+        <td style="text-align:center">${totals.jobs}</td>
+
+        <td style="text-align:right">${fmt$(totals.labor)}</td>
+
+        <td style="text-align:right">${fmt$(totals.parts)}</td>
+
+        <td style="text-align:right;font-family:var(--font-head);font-size:1.05rem;color:var(--red)">${fmt$(totals.total)}</td>
+
+        <td style="text-align:right;color:var(--steel)">${fmt$(totals.total / totals.jobs)}</td>
+
+      </tr>` : '';
+
+    tbody.innerHTML = rowHtml + totalRow;
+
+  }
+
+
+
+  function renderReports() {
+
+    const range = document.getElementById('reportRange').value;
+
+    const data = ARS.Data.getReportData(range);
+
+    lastReport = data;
+
+
+
+    document.getElementById('reportSubtitle').textContent = `Business performance — ${data.rangeLabel}`;
+
+    document.getElementById('kpiRevenueLabel').textContent = `Total Revenue (${data.rangeLabel})`;
+
+    document.getElementById('revenueChartTitle').innerHTML = `<i class="fas fa-chart-bar" style="color:var(--red);margin-right:8px"></i>Monthly Revenue — ${data.rangeLabel}`;
+
+    document.getElementById('serviceChartTitle').innerHTML = `<i class="fas fa-tools" style="color:var(--red);margin-right:8px"></i>Revenue by Service — ${data.rangeLabel}`;
+
+    document.getElementById('techChartTitle').innerHTML = `<i class="fas fa-hard-hat" style="color:var(--red);margin-right:8px"></i>Technician Output — ${data.rangeLabel}`;
+
+    document.getElementById('woSummaryTitle').innerHTML = `<i class="fas fa-table" style="color:var(--red);margin-right:8px"></i>Work Order Summary — ${data.rangeLabel}`;
+
+
+
+    document.getElementById('kpiReportRevenue').textContent = fmt$(data.totalRevenue);
+
+    document.getElementById('kpiReportJobs').textContent = data.completedJobs;
+
+    document.getElementById('kpiReportAvg').textContent = fmt$(data.avgJob);
+
+    document.getElementById('kpiReportCollection').textContent = `${data.collectionRate}%`;
+
+
+
+    document.getElementById('kpiRevenueTrend').innerHTML = `<span>${data.revenue.length} payment month${data.revenue.length !== 1 ? 's' : ''}</span>`;
+
+    document.getElementById('kpiJobsTrend').innerHTML = `<span>${data.completedJobs} completed in period</span>`;
+
+    document.getElementById('kpiAvgTrend').innerHTML = `<span>Labor avg: ${fmt$(data.avgLabor)} · Parts avg: ${fmt$(data.avgParts)}</span>`;
+
+    document.getElementById('kpiCollectionTrend').innerHTML = `<span>${fmt$(data.outstanding)} outstanding</span>`;
+
+
+
+    renderRevenueChart(data.revenue, data.totalRevenue);
+
+    renderServiceChart(data.serviceCategories);
+
+    renderTopCustomers(data.topCustomers);
+
+    renderTechPerformance(data.tech);
+
+    renderARAging(data.aging, data.outstanding);
+
+    renderWoSummary(data.woSummary, data.woTotals);
+
+  }
+
+
+
+  ARS.Pages.waitReady(() => {
+
+    renderReports();
+
+    document.getElementById('reportRange').addEventListener('change', renderReports);
+
+    document.addEventListener('ars:data-changed', renderReports);
+
+
+
+    document.getElementById('reportCsvBtn')?.addEventListener('click', () => {
+
+      if (!lastReport) return;
+
+      const rows = [
+
+        ['Revenue', lastReport.rangeLabel, '', lastReport.totalRevenue],
+
+        ...lastReport.revenue.map((r) => ['Monthly Revenue', r.label, '', r.total]),
+
+        ...lastReport.topCustomers.map((c) => ['Top Customer', c.name, '', c.total]),
+
+        ...lastReport.tech.map((t) => ['Technician', t.tech, t.completed, t.revenue]),
+
+        ...lastReport.woSummary.map((w) => ['WO Month', w.month, w.jobs, w.total]),
+
+      ];
+
+      ARS.exportCSV('reports-export.csv', ['Section', 'Label', 'Count', 'Amount'], rows);
+
+      showToast('Report exported to CSV', 'success');
+
     });
+
+
+
+    document.getElementById('woSummaryCsvBtn')?.addEventListener('click', () => {
+
+      if (!lastReport) return;
+
+      const rows = lastReport.woSummary.map((w) => [w.month, w.jobs, w.labor, w.parts, w.total, w.jobs ? w.total / w.jobs : 0]);
+
+      if (lastReport.woTotals.jobs) {
+
+        rows.push(['TOTAL', lastReport.woTotals.jobs, lastReport.woTotals.labor, lastReport.woTotals.parts, lastReport.woTotals.total, lastReport.woTotals.total / lastReport.woTotals.jobs]);
+
+      }
+
+      ARS.exportCSV('work-order-summary.csv', ['Month', 'Jobs', 'Labor', 'Parts', 'Total', 'AvgPerJob'], rows);
+
+      showToast('WO summary exported', 'success');
+
+    });
+
   });
+
 </script>
+
 </body>
+
 </html>
+

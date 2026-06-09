@@ -3,6 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <title>Inventory | Alex Road Service Ops</title>
   <link rel="stylesheet" href="/app/css/app.css">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
@@ -19,7 +21,7 @@
         <div class="page-header__sub">Track stock levels, costs, and reorder alerts</div>
       </div>
       <div class="page-header__actions">
-        <button class="btn btn--secondary btn--sm" onclick="showToast('Reorder list exported','info')"><i class="fas fa-file-download"></i> Reorder List</button>
+        <button class="btn btn--secondary btn--sm" id="reorderExportBtn"><i class="fas fa-file-download"></i> Reorder List</button>
         <button class="btn btn--primary" onclick="openModal('addPartModal')"><i class="fas fa-plus"></i> Add Part</button>
       </div>
     </div>
@@ -28,38 +30,31 @@
     <div class="kpi-grid" style="margin-bottom:18px">
       <div class="kpi-card">
         <div class="kpi-card__row">
-          <div><div class="kpi-card__label">Total SKUs</div><div class="kpi-card__value">15</div></div>
+          <div><div class="kpi-card__label">Total SKUs</div><div class="kpi-card__value" id="kpiSkuTotal">0</div></div>
           <div class="kpi-card__icon blue"><i class="fas fa-boxes"></i></div>
         </div>
       </div>
       <div class="kpi-card">
         <div class="kpi-card__row">
-          <div><div class="kpi-card__label">In Stock</div><div class="kpi-card__value green">10</div></div>
+          <div><div class="kpi-card__label">In Stock</div><div class="kpi-card__value green" id="kpiSkuInStock">0</div></div>
           <div class="kpi-card__icon green"><i class="fas fa-check-circle"></i></div>
         </div>
       </div>
       <div class="kpi-card">
         <div class="kpi-card__row">
-          <div><div class="kpi-card__label">Low Stock</div><div class="kpi-card__value amber">4</div></div>
+          <div><div class="kpi-card__label">Low Stock</div><div class="kpi-card__value amber" id="kpiSkuLow">0</div></div>
           <div class="kpi-card__icon amber"><i class="fas fa-exclamation-triangle"></i></div>
         </div>
       </div>
       <div class="kpi-card">
         <div class="kpi-card__row">
-          <div><div class="kpi-card__label">Out of Stock</div><div class="kpi-card__value red">1</div></div>
+          <div><div class="kpi-card__label">Out of Stock</div><div class="kpi-card__value red" id="kpiSkuOut">0</div></div>
           <div class="kpi-card__icon red"><i class="fas fa-times-circle"></i></div>
         </div>
       </div>
     </div>
 
-    <!-- Low stock alert banner -->
-    <div class="alert-item alert-item--red" style="margin-bottom:14px">
-      <i class="fas fa-exclamation-circle alert-item__icon"></i>
-      <div>
-        <div class="alert-item__title">Air Line Tubing 1/2" (P013) is completely out of stock</div>
-        <div class="alert-item__desc">Qty: 0 · Minimum: 10 — Reorder immediately to avoid job delays</div>
-      </div>
-    </div>
+    <div id="oosBanner"></div>
 
     <!-- Filter Bar -->
     <div class="filter-bar">
@@ -115,10 +110,10 @@
     </div>
     <div class="modal__body">
       <div class="form-row-2">
-        <div class="form-row"><label class="form-label">Part Number *</label><input class="form-input" placeholder="e.g. AIR-BC-1650"></div>
+        <div class="form-row"><label class="form-label">Part Number *</label><input class="form-input" id="partNo" placeholder="e.g. AIR-BC-1650"></div>
         <div class="form-row">
           <label class="form-label">Category</label>
-          <select class="form-select">
+          <select class="form-select" id="partCat">
             <option>Brakes</option>
             <option>Air System</option>
             <option>Electrical</option>
@@ -130,16 +125,16 @@
           </select>
         </div>
       </div>
-      <div class="form-row"><label class="form-label">Description *</label><input class="form-input" placeholder="Part name/description"></div>
+      <div class="form-row"><label class="form-label">Description *</label><input class="form-input" id="partDesc" placeholder="Part name/description"></div>
       <div class="form-row-2">
-        <div class="form-row"><label class="form-label">Current Qty</label><input class="form-input" type="number" placeholder="0" min="0"></div>
-        <div class="form-row"><label class="form-label">Min Qty (Reorder Point)</label><input class="form-input" type="number" placeholder="0" min="0"></div>
+        <div class="form-row"><label class="form-label">Current Qty</label><input class="form-input" id="partQty" type="number" placeholder="0" min="0"></div>
+        <div class="form-row"><label class="form-label">Min Qty (Reorder Point)</label><input class="form-input" id="partMin" type="number" placeholder="0" min="0"></div>
       </div>
       <div class="form-row-2">
-        <div class="form-row"><label class="form-label">Cost Price ($)</label><input class="form-input" type="number" placeholder="0.00" step="0.01"></div>
-        <div class="form-row"><label class="form-label">Sale Price ($)</label><input class="form-input" type="number" placeholder="0.00" step="0.01"></div>
+        <div class="form-row"><label class="form-label">Cost Price ($)</label><input class="form-input" id="partCost" type="number" placeholder="0.00" step="0.01"></div>
+        <div class="form-row"><label class="form-label">Sale Price ($)</label><input class="form-input" id="partPrice" type="number" placeholder="0.00" step="0.01"></div>
       </div>
-      <div class="form-row"><label class="form-label">Supplier / Notes</label><input class="form-input" placeholder="Supplier name or notes"></div>
+      <div class="form-row"><label class="form-label">Supplier / Notes</label><input class="form-input" id="partSupplier" placeholder="Supplier name or notes"></div>
     </div>
     <div class="modal__footer">
       <button class="btn btn--secondary" data-close-modal>Cancel</button>
@@ -148,46 +143,86 @@
   </div>
 </div>
 
-<script src="/app/js/mock-data.js"></script>
+<script src="/app/js/utils.js"></script>
+<script src="/app/js/data-store.js"></script>
+<script src="/app/js/auth.js"></script>
+<script src="/app/js/data-service.js"></script>
+<script src="/app/js/page-scripts.js"></script>
 <script src="/app/js/app-components.js"></script>
 <script>
   let activeFilter = 'all', searchVal = '', catVal = '';
 
   function rowBg(status) {
     if (status === 'Out of Stock') return 'background:rgba(229,31,43,.03)';
-    if (status === 'Low')          return 'background:#FFFBF5';
+    if (status === 'Low') return 'background:#FFFBF5';
     return '';
   }
 
+  function renderBanner() {
+    const oos = ARS.Data.listInventory().filter(p => p.status === 'Out of Stock');
+    const el = document.getElementById('oosBanner');
+    if (!el) return;
+    el.innerHTML = oos.length ? oos.map(p => `
+      <div class="alert-item alert-item--red" style="margin-bottom:14px">
+        <i class="fas fa-exclamation-circle alert-item__icon"></i>
+        <div>
+          <div class="alert-item__title">${p.desc} (${p.id}) is completely out of stock</div>
+          <div class="alert-item__desc">Qty: ${p.qty} · Minimum: ${p.min} — Reorder immediately to avoid job delays</div>
+        </div>
+      </div>
+    `).join('') : '';
+  }
+
+  function renderKpis(all) {
+    document.getElementById('kpiSkuTotal').textContent = all.length;
+    document.getElementById('kpiSkuInStock').textContent = all.filter(p => p.status === 'In Stock').length;
+    document.getElementById('kpiSkuLow').textContent = all.filter(p => p.status === 'Low').length;
+    document.getElementById('kpiSkuOut').textContent = all.filter(p => p.status === 'Out of Stock').length;
+  }
+
   function renderTable() {
-    const data = INVENTORY.filter(p => {
-      const matchFilter = activeFilter === 'all' || p.status === activeFilter;
-      const matchCat    = !catVal || p.cat === catVal;
-      const q = searchVal.toLowerCase();
-      const matchSearch = !q || p.partNo.toLowerCase().includes(q) || p.desc.toLowerCase().includes(q) || p.cat.toLowerCase().includes(q);
-      return matchFilter && matchCat && matchSearch;
-    });
-    document.getElementById('invCount').textContent = `${data.length} item${data.length!==1?'s':''}`;
+    const filters = { q: searchVal };
+    if (activeFilter !== 'all') filters.status = activeFilter;
+    if (catVal) filters.cat = catVal;
+    const data = ARS.Data.listInventory(filters);
+    const all = ARS.Data.listInventory();
+    renderKpis(all);
+    renderBanner();
+    document.getElementById('invCount').textContent = `${data.length} item${data.length !== 1 ? 's' : ''}`;
     document.getElementById('invTable').innerHTML = data.length ? data.map(p => `
       <tr style="${rowBg(p.status)}">
         <td class="td-mono td-bold" style="white-space:nowrap">${p.partNo}</td>
         <td class="td-primary">${p.desc}</td>
         <td><span style="font-size:.76rem;font-weight:600;color:var(--steel)">${p.cat}</span></td>
-        <td style="text-align:center;font-weight:700;color:${p.qty===0?'var(--red)':p.qty<=p.min?'#D97706':'inherit'}">${p.qty}</td>
+        <td style="text-align:center;font-weight:700;color:${p.qty === 0 ? 'var(--red)' : p.qty <= p.min ? '#D97706' : 'inherit'}">${p.qty}</td>
         <td style="text-align:center;color:var(--warm-gray)">${p.min}</td>
-        <td style="text-align:right">$${p.cost.toFixed(2)}</td>
-        <td style="text-align:right;font-weight:600">$${p.price.toFixed(2)}</td>
+        <td style="text-align:right">${fmt$(p.cost)}</td>
+        <td style="text-align:right;font-weight:600">${fmt$(p.price)}</td>
         <td>${chip(p.status)}</td>
         <td class="td-actions">
-          <button class="btn btn--ghost btn--sm btn--icon" title="Adjust Stock" onclick="showToast('Stock adjusted for '+this.closest('tr').querySelectorAll('td')[1].textContent,'success')"><i class="fas fa-plus-minus"></i></button>
-          <button class="btn btn--ghost btn--sm btn--icon" title="Edit"><i class="fas fa-pencil-alt"></i></button>
-          ${p.status!=='In Stock' ? `<button class="btn btn--secondary btn--sm" onclick="showToast('Reorder request sent','info')"><i class="fas fa-shopping-cart"></i> Reorder</button>` : ''}
+          <button class="btn btn--ghost btn--sm btn--icon" title="Adjust Stock" onclick="adjustStock('${p.id}')"><i class="fas fa-plus-minus"></i></button>
         </td>
       </tr>
     `).join('') : `<tr><td colspan="9"><div class="empty-state"><div class="empty-state__icon"><i class="fas fa-boxes"></i></div><div class="empty-state__title">No items found</div></div></td></tr>`;
   }
 
-  document.addEventListener('DOMContentLoaded', () => {
+  window.adjustStock = (partId) => {
+    if (!ARS.can('inventory.edit')) return showToast('Permission denied', 'error');
+    const part = ARS.Data.listInventory().find(p => p.id === partId);
+    const input = prompt(`Adjust stock for ${part?.desc || partId}\nEnter +1, -1, or any number (e.g. +5, -3):`);
+    if (input === null || input.trim() === '') return;
+    const delta = Number(input.replace(/^\+/, ''));
+    if (isNaN(delta)) return showToast('Invalid adjustment amount', 'error');
+    try {
+      ARS.Data.adjustStock(partId, delta, 'manual adjustment');
+      renderTable();
+      showToast(`Stock adjusted for ${part?.desc || partId}`, 'success');
+    } catch (e) {
+      showToast(e.message, 'error');
+    }
+  };
+
+  ARS.Pages.waitReady(() => {
     renderTable();
     document.getElementById('invFilterTabs').addEventListener('click', e => {
       const btn = e.target.closest('.filter-tab'); if (!btn) return;
@@ -196,8 +231,39 @@
     });
     document.getElementById('invSearch').addEventListener('input', e => { searchVal = e.target.value; renderTable(); });
     document.getElementById('catFilter').addEventListener('change', e => { catVal = e.target.value; renderTable(); });
-    document.getElementById('savePartBtn').addEventListener('click', () => {
+    document.addEventListener('ars:data-changed', renderTable);
+
+    document.getElementById('reorderExportBtn')?.addEventListener('click', () => {
+      const low = ARS.Data.getLowStock();
+      const rows = low.map(p => [p.id, p.partNo, p.desc, p.cat, p.qty, p.min, p.cost, p.price, p.status]);
+      ARS.exportCSV('reorder-list.csv', ['ID','Part #','Description','Category','Qty','Min','Cost','Price','Status'], rows);
+      showToast('Reorder list exported', 'success');
+    });
+
+    document.getElementById('savePartBtn')?.addEventListener('click', async () => {
+      if (!ARS.can('inventory.edit')) return showToast('Permission denied', 'error');
+      const partNo = document.getElementById('partNo').value.trim();
+      const desc = document.getElementById('partDesc').value.trim();
+      if (!partNo || !desc) return showToast('Part number and description required', 'error');
+      try {
+        await ARS.Data.createPart({
+          partNo,
+          desc,
+          cat: document.getElementById('partCat').value,
+          qty: document.getElementById('partQty').value,
+          min: document.getElementById('partMin').value,
+          cost: document.getElementById('partCost').value,
+          price: document.getElementById('partPrice').value,
+        });
+      } catch (e) {
+        return showToast(e.message, 'error');
+      }
       closeModal('addPartModal');
+      ['partNo','partDesc','partQty','partMin','partCost','partPrice','partSupplier'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.value = '';
+      });
+      renderTable();
       showToast('Part added to inventory!', 'success');
     });
   });

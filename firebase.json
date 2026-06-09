@@ -1,5 +1,6 @@
 {
   "hosting": {
+    "site": "launchpage-alex-roadservice",
     "public": "public",
     "ignore": [
       "firebase.json",
@@ -10,6 +11,25 @@
     "trailingSlash": false,
     "headers": [
       {
+        "source": "/favicon.ico",
+        "headers": [
+          { "key": "Cache-Control", "value": "public, max-age=604800" }
+        ]
+      },
+      {
+        "source": "/favicon.svg",
+        "headers": [
+          { "key": "Cache-Control", "value": "public, max-age=604800" },
+          { "key": "Content-Type", "value": "image/svg+xml" }
+        ]
+      },
+      {
+        "source": "/app/**",
+        "headers": [
+          { "key": "Cache-Control", "value": "no-cache, must-revalidate" }
+        ]
+      },
+      {
         "source": "**/*.@(js|css)",
         "headers": [
           { "key": "Cache-Control", "value": "max-age=31536000" }
@@ -18,9 +38,29 @@
       {
         "source": "**/*.html",
         "headers": [
-          { "key": "Cache-Control", "value": "max-age=3600" }
+          { "key": "Cache-Control", "value": "max-age=300" },
+          { "key": "X-Content-Type-Options", "value": "nosniff" },
+          { "key": "X-Frame-Options", "value": "SAMEORIGIN" },
+          { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" }
         ]
       }
     ]
-  }
+  },
+  "firestore": {
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
+  },
+  "functions": [
+    {
+      "source": "functions",
+      "codebase": "default",
+      "ignore": [
+        "node_modules",
+        ".git",
+        "firebase-debug.log",
+        "firebase-debug.*.log",
+        "*.local"
+      ]
+    }
+  ]
 }

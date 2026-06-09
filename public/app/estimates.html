@@ -3,6 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <title>Estimates | Alex Road Service Ops</title>
   <link rel="stylesheet" href="/app/css/app.css">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
@@ -28,25 +30,25 @@
     <div class="kpi-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:18px">
       <div class="kpi-card">
         <div class="kpi-card__row">
-          <div><div class="kpi-card__label">Total Estimates</div><div class="kpi-card__value">6</div></div>
+          <div><div class="kpi-card__label">Total Estimates</div><div class="kpi-card__value" id="kpiEstTotal">0</div></div>
           <div class="kpi-card__icon blue"><i class="fas fa-file-alt"></i></div>
         </div>
       </div>
       <div class="kpi-card">
         <div class="kpi-card__row">
-          <div><div class="kpi-card__label">Pending</div><div class="kpi-card__value amber">2</div></div>
+          <div><div class="kpi-card__label">Pending</div><div class="kpi-card__value amber" id="kpiEstPending">0</div></div>
           <div class="kpi-card__icon amber"><i class="fas fa-clock"></i></div>
         </div>
       </div>
       <div class="kpi-card">
         <div class="kpi-card__row">
-          <div><div class="kpi-card__label">Approved</div><div class="kpi-card__value green">3</div></div>
+          <div><div class="kpi-card__label">Approved</div><div class="kpi-card__value green" id="kpiEstApproved">0</div></div>
           <div class="kpi-card__icon green"><i class="fas fa-check-circle"></i></div>
         </div>
       </div>
       <div class="kpi-card">
         <div class="kpi-card__row">
-          <div><div class="kpi-card__label">Est. Value (Pending)</div><div class="kpi-card__value">$1,580</div></div>
+          <div><div class="kpi-card__label">Est. Value (Pending)</div><div class="kpi-card__value" id="kpiEstValue">$0</div></div>
           <div class="kpi-card__icon blue"><i class="fas fa-dollar-sign"></i></div>
         </div>
       </div>
@@ -94,36 +96,19 @@
       <div class="form-row-2">
         <div class="form-row">
           <label class="form-label">Customer *</label>
-          <select class="form-select">
-            <option value="">Select customer…</option>
-            <option>Reid Trucking LLC</option>
-            <option>Lopez Distribution</option>
-            <option>James Construction</option>
-            <option>Travis Cooper</option>
-            <option>Linda Gomez</option>
-            <option>WashEx Logistics</option>
-            <option>Kim Brothers Inc.</option>
-          </select>
+          <select class="form-select" id="estCustomer"></select>
         </div>
         <div class="form-row">
           <label class="form-label">Truck / Unit *</label>
-          <select class="form-select">
-            <option value="">Select truck…</option>
-            <option>Unit 101 · Freightliner Cascadia</option>
-            <option>Unit 205 · Kenworth T680</option>
-            <option>Unit 310 · Peterbilt 579</option>
-            <option>Unit 007 · International LT</option>
-            <option>Unit 414 · Volvo VNL 760</option>
-            <option>Unit 512 · Mack Anthem</option>
-          </select>
+          <select class="form-select" id="estTruck"></select>
         </div>
       </div>
-      <div class="form-row"><label class="form-label">Work Description *</label><textarea class="form-textarea" placeholder="Describe the work to estimate…"></textarea></div>
+      <div class="form-row"><label class="form-label">Work Description *</label><textarea class="form-textarea" id="estDesc" placeholder="Describe the work to estimate…"></textarea></div>
       <div class="form-row-2">
-        <div class="form-row"><label class="form-label">Labor Estimate ($)</label><input class="form-input" type="number" placeholder="0.00"></div>
-        <div class="form-row"><label class="form-label">Parts Estimate ($)</label><input class="form-input" type="number" placeholder="0.00"></div>
+        <div class="form-row"><label class="form-label">Labor Estimate ($)</label><input class="form-input" id="estLabor" type="number" placeholder="0.00" min="0" step="0.01"></div>
+        <div class="form-row"><label class="form-label">Parts Estimate ($)</label><input class="form-input" id="estParts" type="number" placeholder="0.00" min="0" step="0.01"></div>
       </div>
-      <div class="form-row"><label class="form-label">Notes</label><textarea class="form-textarea" placeholder="Any additional notes or conditions…"></textarea></div>
+      <div class="form-row"><label class="form-label">Notes</label><textarea class="form-textarea" id="estNotes" placeholder="Any additional notes or conditions…"></textarea></div>
     </div>
     <div class="modal__footer">
       <button class="btn btn--secondary" data-close-modal>Cancel</button>
@@ -132,51 +117,127 @@
   </div>
 </div>
 
-<script src="/app/js/mock-data.js"></script>
+<script src="/app/js/utils.js"></script>
+<script src="/app/js/data-store.js"></script>
+<script src="/app/js/auth.js"></script>
+<script src="/app/js/data-service.js"></script>
+<script src="/app/js/documents.js"></script>
+<script src="/app/js/page-scripts.js"></script>
 <script src="/app/js/app-components.js"></script>
 <script>
   let activeFilter = 'all', searchVal = '';
 
+  function renderKpis(all) {
+    const pending = all.filter(e => e.status === 'Pending' || e.status === 'Sent');
+    const pendingValue = pending.reduce((s, e) => s + e.total, 0);
+    document.getElementById('kpiEstTotal').textContent = all.length;
+    document.getElementById('kpiEstPending').textContent = pending.length;
+    document.getElementById('kpiEstApproved').textContent = all.filter(e => e.status === 'Approved').length;
+    document.getElementById('kpiEstValue').textContent = fmt$(pendingValue);
+  }
+
   function renderTable() {
-    const data = ESTIMATES.filter(e => {
-      const matchFilter = activeFilter === 'all' || e.status === activeFilter;
-      const q = searchVal.toLowerCase();
-      const matchSearch = !q || e.id.toLowerCase().includes(q) || e.customer.toLowerCase().includes(q);
-      return matchFilter && matchSearch;
-    });
-    document.getElementById('estCount').textContent = `${data.length} estimate${data.length!==1?'s':''}`;
+    const filters = { q: searchVal };
+    if (activeFilter !== 'all') filters.status = activeFilter;
+    const data = ARS.Data.listEstimates(filters);
+    const all = ARS.Data.listEstimates();
+    renderKpis(all);
+    document.getElementById('estCount').textContent = `${data.length} estimate${data.length !== 1 ? 's' : ''}`;
     document.getElementById('estTable').innerHTML = data.length ? data.map(e => `
       <tr>
         <td class="td-mono td-bold">${e.id}</td>
         <td class="td-muted">${e.date}</td>
-        <td class="td-primary">${e.customer}</td>
-        <td class="td-muted" style="font-size:.76rem">${e.truck}</td>
+        <td class="td-primary">${e.customerName}</td>
+        <td class="td-muted" style="font-size:.76rem">${e.truckLabel || '—'}</td>
         <td style="font-size:.8rem;color:var(--steel);max-width:200px">${e.desc}</td>
-        <td style="text-align:right">$${e.labor.toLocaleString()}</td>
-        <td style="text-align:right">$${e.parts.toLocaleString()}</td>
+        <td style="text-align:right">${fmt$(e.labor)}</td>
+        <td style="text-align:right">${fmt$(e.parts)}</td>
         <td style="text-align:right;font-weight:700">${fmt$(e.total)}</td>
         <td>${chip(e.status)}</td>
         <td class="td-actions">
-          <button class="btn btn--ghost btn--sm btn--icon"><i class="fas fa-print"></i></button>
-          <button class="btn btn--ghost btn--sm btn--icon"><i class="fas fa-pencil-alt"></i></button>
-          ${e.status==='Approved' ? `<button class="btn btn--primary btn--sm" onclick="showToast('WO created from estimate','success')">→ WO</button>` : ''}
-          ${e.status==='Pending' ? `<button class="btn btn--secondary btn--sm" onclick="showToast('Estimate sent to customer','info')"><i class="fas fa-paper-plane"></i></button>` : ''}
+          <button class="btn btn--ghost btn--sm btn--icon" onclick="ARS.Documents.printEstimate('${e.id}')" title="Print"><i class="fas fa-print"></i></button>
+          ${e.status === 'Approved' ? `<button class="btn btn--primary btn--sm" onclick="convertEst('${e.id}')">→ WO</button>` : ''}
+          ${e.status === 'Pending' || e.status === 'Sent' ? `
+            <button class="btn btn--secondary btn--sm" onclick="sendEst('${e.id}')" title="Send"><i class="fas fa-paper-plane"></i></button>
+            <button class="btn btn--ghost btn--sm" onclick="approveEst('${e.id}')" title="Approve"><i class="fas fa-check"></i></button>
+            <button class="btn btn--ghost btn--sm" onclick="declineEst('${e.id}')" title="Decline"><i class="fas fa-times"></i></button>
+          ` : ''}
         </td>
       </tr>
     `).join('') : `<tr><td colspan="10"><div class="empty-state"><div class="empty-state__icon"><i class="fas fa-file-alt"></i></div><div class="empty-state__title">No estimates found</div></div></td></tr>`;
   }
 
-  document.addEventListener('DOMContentLoaded', () => {
+  window.sendEst = (id) => {
+    if (!ARS.can('estimates.send')) return showToast('Permission denied', 'error');
+    ARS.Data.updateEstimate(id, { status: 'Sent' });
     renderTable();
-    document.getElementById('estFilterTabs').addEventListener('click', e => {
-      const btn = e.target.closest('.filter-tab'); if (!btn) return;
-      document.querySelectorAll('#estFilterTabs .filter-tab').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active'); activeFilter = btn.dataset.filter; renderTable();
+    showToast('Estimate sent to customer', 'info');
+  };
+
+  window.approveEst = (id) => {
+    if (!ARS.can('estimates.send')) return showToast('Permission denied', 'error');
+    ARS.Data.updateEstimate(id, { status: 'Approved' });
+    renderTable();
+    showToast('Estimate approved', 'success');
+  };
+
+  window.declineEst = (id) => {
+    if (!ARS.can('estimates.send')) return showToast('Permission denied', 'error');
+    ARS.Data.updateEstimate(id, { status: 'Declined' });
+    renderTable();
+    showToast('Estimate declined', 'warning');
+  };
+
+  window.convertEst = async (id) => {
+    try {
+      const wo = await ARS.Data.convertEstimateToWO(id);
+      renderTable();
+      showToast(`Work order ${wo.id} created`, 'success');
+    } catch (e) {
+      showToast(e.message, 'error');
+    }
+  };
+
+  ARS.Pages.waitReady(() => {
+    const custSel = document.getElementById('estCustomer');
+    const truckSel = document.getElementById('estTruck');
+    ARS.Pages.populateCustomerSelect(custSel);
+    custSel.addEventListener('change', () => ARS.Pages.populateTruckSelect(truckSel, custSel.value));
+    renderTable();
+    ARS.Pages.bindFilters('estFilterTabs', 'estSearch', 'estCount', ({ filter, q }) => {
+      if (filter !== undefined) activeFilter = filter;
+      if (q !== undefined) searchVal = q;
+      renderTable();
     });
-    document.getElementById('estSearch').addEventListener('input', e => { searchVal = e.target.value; renderTable(); });
-    document.getElementById('saveEstBtn').addEventListener('click', () => {
-      closeModal('createEstModal');
-      showToast('Estimate created and saved!', 'success');
+    document.addEventListener('ars:data-changed', renderTable);
+
+    document.getElementById('saveEstBtn')?.addEventListener('click', async () => {
+      if (!ARS.can('estimates.create')) return showToast('Permission denied', 'error');
+      const customerId = custSel.value;
+      const truckId = truckSel.value;
+      const desc = document.getElementById('estDesc').value.trim();
+      if (!customerId || !truckId || !desc) return showToast('Customer, truck, and description required', 'error');
+      const custOpt = custSel.selectedOptions[0];
+      const truckOpt = truckSel.selectedOptions[0];
+      try {
+        await ARS.Data.createEstimate({
+          customerId,
+          customerName: custOpt?.dataset.name || custOpt?.textContent,
+          truckLabel: truckOpt?.dataset.label || truckOpt?.textContent,
+          desc,
+          labor: document.getElementById('estLabor').value,
+          parts: document.getElementById('estParts').value,
+        });
+        closeModal('createEstModal');
+        document.getElementById('estDesc').value = '';
+        document.getElementById('estLabor').value = '';
+        document.getElementById('estParts').value = '';
+        document.getElementById('estNotes').value = '';
+        renderTable();
+        showToast('Estimate created and saved!', 'success');
+      } catch (e) {
+        showToast(e.message, 'error');
+      }
     });
   });
 </script>

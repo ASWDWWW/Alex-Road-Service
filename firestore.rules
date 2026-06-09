@@ -1,0 +1,124 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isAuth() {
+      return request.auth != null;
+    }
+
+    function role() {
+      return request.auth.token.role;
+    }
+
+    function isDeveloper() {
+      return isAuth() && role() == 'developer';
+    }
+
+    function isAdmin() {
+      return isAuth() && role() == 'admin';
+    }
+
+    function isAdminOrDev() {
+      return isDeveloper() || isAdmin();
+    }
+
+    function isOffice() {
+      return isAuth() && role() in ['admin', 'office', 'developer'];
+    }
+
+    function isTech() {
+      return isAuth() && role() in ['admin', 'office', 'technician', 'developer'];
+    }
+
+    match /users/{userId} {
+      allow read: if isAuth() && (request.auth.uid == userId || isAdminOrDev());
+      allow create, update: if isAdminOrDev();
+      allow delete: if isDeveloper();
+    }
+
+    match /customers/{docId} {
+      allow read: if isTech();
+      allow create, update: if isOffice();
+      allow delete: if isDeveloper();
+    }
+
+    match /trucks/{docId} {
+      allow read: if isTech();
+      allow create, update: if isOffice();
+      allow delete: if isDeveloper();
+    }
+
+    match /workOrders/{docId} {
+      allow read: if isTech();
+      allow create: if isOffice();
+      allow update: if isOffice() || (isAuth() && role() == 'technician');
+      allow delete: if isDeveloper();
+    }
+
+    match /estimates/{docId} {
+      allow read: if isTech();
+      allow create, update: if isOffice();
+      allow delete: if isDeveloper();
+    }
+
+    match /invoices/{docId} {
+      allow read: if isOffice();
+      allow create, update: if isOffice();
+      allow delete: if isDeveloper();
+    }
+
+    match /payments/{docId} {
+      allow read: if isOffice();
+      allow create, update, delete: if false;
+    }
+
+    match /stripe_events/{docId} {
+      allow read, write: if false;
+    }
+
+    match /inventory/{docId} {
+      allow read: if isTech();
+      allow create, update: if isOffice();
+      allow delete: if isDeveloper();
+    }
+
+    match /inventoryTransactions/{docId} {
+      allow read: if isOffice();
+      allow create: if isOffice();
+      allow delete: if isDeveloper();
+    }
+
+    match /notifications/{docId} {
+      allow read, update: if isAuth() && (resource.data.userId == request.auth.uid || isAdminOrDev());
+      allow create: if isOffice();
+      allow delete: if isDeveloper();
+    }
+
+    match /settings/{docId} {
+      allow read: if isAuth();
+      allow write: if isAdminOrDev();
+    }
+
+    match /audit_log/{docId} {
+      allow read: if isAdminOrDev();
+      allow write: if false;
+    }
+
+    match /counters/{docId} {
+      allow read, write: if false;
+    }
+
+    match /contact_submissions/{docId} {
+      allow create: if request.resource.data.keys().hasAll(['name', 'email', 'createdAt'])
+        && request.resource.data.name is string
+        && request.resource.data.email is string;
+      allow read: if isOffice();
+      allow update, delete: if isDeveloper();
+    }
+
+    match /contactSubmissions/{docId} {
+      allow read: if isOffice();
+      allow write: if isDeveloper();
+    }
+  }
+}

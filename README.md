@@ -1,126 +1,85 @@
 # Alex Road Service — Website & Operations Platform
 
-Public marketing website and internal operations platform for Alex Road Service: 24/7 emergency roadside repair and commercial truck repair. Built for Firebase Hosting.
+Public marketing website and **production-ready internal operations platform** for Alex Road Service: 24/7 emergency roadside repair and commercial truck repair (Keasbey, NJ).
 
 ---
 
-## Operations Platform — Demo Login
+## What's included
 
-The internal ops platform lives at `/app/dashboard.html` (after login). Use the credentials below to sign in:
+| Layer | Status |
+|-------|--------|
+| Public marketing site (9 pages) | Live UI + contact form persistence |
+| Ops platform (9 modules + 4 detail pages) | Full CRUD with localStorage persistence |
+| Auth | Firebase Authentication only (token re-validated each session) |
+| Payments | Stripe Checkout + webhook (no manual entry) |
+| RBAC | Admin / Office / Technician permissions |
+| Dashboard & reports | Live KPIs from stored data |
+| Firebase | Rules, functions, hosting config (wire credentials to go live) |
 
-| Role        | Email                             | Password  |
-|-------------|-----------------------------------|-----------|
-| Admin       | admin@alexroadservice.com         | Admin123  |
-| Technician  | tech@alexroadservice.com          | Tech123   |
-| Office Staff| office@alexroadservice.com        | Office123 |
-
-> **Note:** These are mock credentials stored client-side for development. Before going live, replace the mock auth in `public/login.html` with real Firebase Authentication and remove this table from the README.
+**Full implementation plan:** [`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md)  
+**Ops runbook:** [`docs/RUNBOOK.md`](docs/RUNBOOK.md)
 
 ---
 
-## Run on localhost
-
-Serve the site locally with Python (no install needed if you have Python 3):
+## Quick start (local)
 
 ```bash
 cd public
-python3 -m http.server 3000
+python -m http.server 3000
 ```
 
-Then open in your browser: **http://localhost:3000**
+Open **http://localhost:3000**
 
-To stop the server, press `Ctrl+C` in the terminal.
+Ops platform: **http://localhost:3000/login.html**
 
-**Alternative (Node.js):**
+### Staff login
 
-```bash
-npx serve public -l 3000
-```
+Firebase Authentication is **required**. Bootstrap staff accounts once via `/setup.html` or `npm run bootstrap`, then sign in at `/login.html`.
 
-Then open **http://localhost:3000**
+See [`docs/FIREBASE_SETUP.md`](docs/FIREBASE_SETUP.md) and [`docs/STRIPE_SETUP.md`](docs/STRIPE_SETUP.md).
 
 ---
 
-## Deploy to Firebase
+## Ops platform modules
 
-### 1. Install Firebase CLI (if needed)
+| Module | Route | Features |
+|--------|-------|----------|
+| Dashboard | `/app/dashboard.html` | Live KPIs, alerts, schedule, recent WOs |
+| Customers | `/app/customers.html` | CRUD, search, export, detail view |
+| Trucks | `/app/trucks.html` | Fleet registry, PM alerts, detail view |
+| Work Orders | `/app/work-orders.html` | Create, status workflow, invoice generation |
+| Estimates | `/app/estimates.html` | Create, send, approve, convert to WO |
+| Invoices | `/app/invoices.html` | Track AR, record payments, overdue detection |
+| Payments | `/app/payments.html` | Stripe payment history, collect via Checkout |
+| Inventory | `/app/inventory.html` | Stock levels, adjust, reorder export |
+| Reports | `/app/reports.html` | Revenue charts, tech performance, CSV export |
+| Settings | `/app/settings.html` | Labor rate, tax, shop info (Admin) |
 
-```bash
-npm install -g firebase-tools
-```
-
-### 2. Log in
-
-```bash
-firebase login
-```
-
-### 3. Set your project ID
-
-Edit `.firebaserc` and set `"default"` to your Firebase project ID:
-
-```json
-{
-  "projects": {
-    "default": "your-firebase-project-id"
-  }
-}
-```
-
-### 4. Deploy
-
-```bash
-firebase deploy --only hosting
-```
-
-Your site will be live at `https://your-project-id.web.app` (and your custom domain if configured in Firebase).
+Operational data syncs to **Firestore** in real time. localStorage is used only as a local cache.
 
 ---
 
-## Before going live — update these
+## Firebase deployment
 
-### In `public/js/components.js`
+1. Install CLI: `npm install -g firebase-tools`
+2. Login: `firebase login`
+3. Set project in `.firebaserc`
+4. Add real config to `public/js/firebase-config.js`
+5. Deploy:
 
-Update the `SITE` object at the top with your real business details:
+```bash
+cd functions && npm install && cd ..
+firebase deploy
+```
 
-| Variable       | What to set |
-|----------------|-------------|
-| `phone`        | Main shop phone (display) |
-| `phoneTel`     | Same number as `tel:` link (e.g. `tel:+12145550100`) |
-| `phoneEmerg`   | 24/7 emergency line (display) |
-| `phoneTelEmg`  | Same emergency number as `tel:` link |
-| `email`        | Contact email |
-| `address`      | Full shop address |
-| `hours`        | Shop and emergency hours text |
-| `mapEmbed`     | Google Maps embed URL for your actual location |
+Deploys: Hosting, Firestore rules, Cloud Functions.
 
-These values drive the banner, nav, footer, and contact blocks site-wide.
+### GitHub Actions
 
-### In `public/js/firebase-config.js`
+Configure secrets: `FIREBASE_TOKEN`, `FIREBASE_STAGING_PROJECT`, `FIREBASE_PROD_PROJECT`
 
-Replace the placeholder Firebase config with your project’s values from **Firebase Console → Project settings → Your apps**:
-
-- `apiKey`
-- `authDomain`
-- `projectId`
-- `storageBucket`
-- `messagingSenderId`
-- `appId`
-- `measurementId` (optional, for Analytics)
-
-### In `public/login.html`
-
-The login page has its own Firebase config block (in the `<script type="module">` at the bottom). Replace the same placeholders with your Firebase project credentials so staff can sign in.
-
----
-
-## Firestore (optional)
-
-If you use the contact form with Firebase:
-
-1. In Firebase Console, create a Firestore database.
-2. Create a collection named `contact_submissions` (or change the name in `firebase-config.js` to match your collection).
-3. Set Firestore rules so only your app (or admin) can read; the client can write contact submissions.
+- Push to `staging` → deploy staging
+- Push to `main` → deploy production (with environment approval)
 
 ---
 
@@ -128,38 +87,37 @@ If you use the contact form with Firebase:
 
 ```
 Alex-Road-Service/
-├── public/                  # Static site (deployed to Firebase)
-│   ├── index.html           # Home
-│   ├── about.html
-│   ├── services.html
-│   ├── emergency.html
-│   ├── commercial.html
-│   ├── contact.html
-│   ├── reviews.html
-│   ├── financing.html
-│   ├── login.html           # Staff login (mock auth → swap for Firebase)
-│   ├── css/
-│   │   └── styles.css       # Public site design system
+├── docs/
+│   ├── IMPLEMENTATION_PLAN.md
+│   └── RUNBOOK.md
+├── functions/                 # Cloud Functions (IDs, overdue job, audit)
+├── public/
+│   ├── app/                   # Ops platform
+│   │   ├── js/
+│   │   │   ├── auth.js        # Login, RBAC, sessions
+│   │   │   ├── data-store.js  # localStorage persistence
+│   │   │   ├── data-service.js# Business logic / CRUD
+│   │   │   ├── utils.js
+│   │   │   ├── page-scripts.js
+│   │   │   └── app-components.js
+│   │   └── *.html
 │   ├── js/
-│   │   ├── components.js    # Nav + footer (update SITE here)
-│   │   ├── main.js
-│   │   └── firebase-config.js
-│   └── app/                 # Internal Operations Platform (auth-gated)
-│       ├── dashboard.html
-│       ├── customers.html
-│       ├── trucks.html
-│       ├── work-orders.html
-│       ├── estimates.html
-│       ├── invoices.html
-│       ├── payments.html
-│       ├── inventory.html
-│       ├── reports.html
-│       ├── css/
-│       │   └── app.css      # Ops platform design system
-│       └── js/
-│           ├── app-components.js  # Sidebar, topbar, toast, modal helpers
-│           └── mock-data.js       # Mock customers, trucks, WOs, etc.
-├── firebase.json
-├── .firebaserc              # Set your project ID here
-└── README.md
+│   │   ├── firebase-config.js
+│   │   ├── components.js
+│   │   └── main.js
+│   └── ...
+├── firestore.rules
+├── firestore.indexes.json
+└── firebase.json
 ```
+
+---
+
+## Before production go-live
+
+- [ ] Replace `YOUR_*` in `firebase-config.js` with real Firebase credentials
+- [ ] Create Firebase Auth users with custom claims (`admin`, `office`, `technician`)
+- [ ] Enable Firestore PITR and daily backups
+- [ ] Remove demo credentials from production README
+- [ ] Accountant review of tax settings in Settings page
+- [ ] Complete go-live checklist in `docs/IMPLEMENTATION_PLAN.md` §16
