@@ -3,13 +3,11 @@ window.ARS = window.ARS || {};
 
 ARS.Pages = {
   waitReady(fn) {
-    if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', () => {
-        document.addEventListener('ars:ready', fn, { once: true });
-      });
-    } else {
-      document.addEventListener('ars:ready', fn, { once: true });
+    if (window.__ARS_APP_READY) {
+      fn();
+      return;
     }
+    window.addEventListener('ars:ready', fn, { once: true });
   },
 
   bindFilters(tabsId, searchId, countId, onChange) {

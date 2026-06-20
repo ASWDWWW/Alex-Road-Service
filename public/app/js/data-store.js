@@ -1,8 +1,12 @@
 /* Alex Road Service — Persistence Layer (localStorage + optional Firestore) */
 window.ARS = window.ARS || {};
 
-const STORE_KEY = 'ars_platform_v1';
+const PROD_STORE_KEY = 'ars_platform_v1';
 const listeners = new Set();
+
+function storeKey() {
+  return ARS.isDemoMode?.() ? (ARS.DEMO_STORE_KEY || 'ars_platform_demo_v1') : PROD_STORE_KEY;
+}
 
 function emit() {
   listeners.forEach((fn) => { try { fn(); } catch (e) { console.error(e); } });
@@ -37,10 +41,20 @@ function defaultState() {
   };
 }
 
+function loadDemoState() {
+  if (ARS.Demo?.getState) {
+    return { ...defaultState(), ...ARS.Demo.getState() };
+  }
+  ARS.Demo?.resetAndSeed?.();
+  return { ...defaultState(), ...(ARS.Demo?.getState?.() || {}) };
+}
+
 ARS.Store = {
   load() {
+    if (ARS.isDemoMode?.()) return loadDemoState();
+
     try {
-      const raw = localStorage.getItem(STORE_KEY);
+      const raw = localStorage.getItem(storeKey());
       if (!raw) return defaultState();
       return { ...defaultState(), ...JSON.parse(raw) };
     } catch {
@@ -49,7 +63,12 @@ ARS.Store = {
   },
 
   save(state, opts = {}) {
-    localStorage.setItem(STORE_KEY, JSON.stringify(state));
+    if (ARS.isDemoMode?.()) {
+      ARS.Demo?.setState?.(state);
+      if (!opts.silent) emit();
+      return;
+    }
+    localStorage.setItem(storeKey(), JSON.stringify(state));
     if (!opts.silent) emit();
   },
 
@@ -105,5 +124,4 @@ ARS.Store = {
     s.auditLog = s.auditLog.slice(0, 500);
     this.save(s);
   },
-
 };

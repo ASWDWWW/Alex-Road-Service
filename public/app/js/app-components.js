@@ -52,6 +52,12 @@ function isActive(href) {
   return p.includes(key);
 }
 
+function appHref(path) {
+  if (!ARS.isDemoMode?.()) return path;
+  const sep = path.includes('?') ? '&' : '?';
+  return `${path}${sep}demo=1`;
+}
+
 function buildSidebar() {
   const user = getAppUser();
   const badges = getBadges();
@@ -63,7 +69,7 @@ function buildSidebar() {
   }).map((n) => {
     const badge = n.badgeKey && badges[n.badgeKey] ? badges[n.badgeKey] : null;
     return `
-    <a href="${n.href}" class="sidebar__item${isActive(n.href) ? ' active' : ''}">
+    <a href="${appHref(n.href)}" class="sidebar__item${isActive(n.href) ? ' active' : ''}">
       <i class="${n.icon}"></i>
       <span>${n.label}</span>
       ${badge ? `<span class="sidebar__badge">${badge}</span>` : ''}
@@ -267,6 +273,11 @@ function loadScript(src) {
 }
 
 async function loadAppScripts() {
+  if (ARS.isDemoMode?.()) {
+    ARS.Demo?.getState?.();
+    if (window.ARS?.Data?.init) await ARS.Data.init();
+    return;
+  }
   try {
     await loadScript('/app/js/firestore-sync.js');
     await loadScript('/app/js/payments-stripe.js');
@@ -285,9 +296,12 @@ async function loadAppScripts() {
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
+  if (new URLSearchParams(window.location.search).get('demo') === '1') {
+    ARS.markDemoSession?.();
+  }
   try {
     await loadScript('/js/firebase-config.js');
-    if (window.ARSFirebase?.configured) {
+    if (window.ARSFirebase?.configured && !ARS.isDemoMode?.()) {
       let attempts = 0;
       while (!window.ARSFirebase.auth && attempts < 50) {
         await new Promise((r) => setTimeout(r, 100));
@@ -296,14 +310,20 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     if (ARS.Auth?.init) await ARS.Auth.init();
   } catch (e) {
-    console.error(e);
-    window.location.href = '/login.html?error=firebase';
-    return;
+    if (!ARS.isDemoMode?.()) {
+      console.error(e);
+      window.location.href = '/login.html?error=firebase';
+      return;
+    }
   }
 
   if (!(await ARS.Auth.requireAuth())) return;
 
   await loadAppScripts();
+
+  if (ARS.isDemoMode?.()) {
+    await loadScript('/app/js/payments-stripe.js');
+  }
 
   const sbEl = document.getElementById('sidebar-placeholder');
   if (sbEl) sbEl.outerHTML = buildSidebar();
@@ -339,9 +359,23 @@ document.addEventListener('DOMContentLoaded', async () => {
   initGlobalSearch();
   initNotifications();
 
+  if (ARS.isDemoMode?.()) {
+    document.body.classList.add('demo-active');
+    const main = document.querySelector('.app-main');
+    if (main) {
+      const banner = document.createElement('div');
+      banner.className = 'demo-banner';
+      banner.innerHTML = '<i class="fas fa-flask"></i> Demo mode — sample data only. Changes reset when you sign out and back in.';
+      main.insertBefore(banner, main.firstChild);
+    }
+  }
+
   ARS.Store.subscribe(() => {
     document.dispatchEvent(new CustomEvent('ars:data-changed'));
   });
 
+  window.__ARS_APP_READY = true;
   window.dispatchEvent(new CustomEvent('ars:ready'));
+  document.dispatchEvent(new CustomEvent('ars:ready'));
+  document.dispatchEvent(new CustomEvent('ars:data-changed'));
 });

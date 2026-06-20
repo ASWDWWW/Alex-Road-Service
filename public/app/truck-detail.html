@@ -50,6 +50,7 @@
 </div>
 
 <script src="/app/js/utils.js"></script>
+<script src="/app/js/demo-mode.js"></script>
 <script src="/app/js/data-store.js"></script>
 <script src="/app/js/auth.js"></script>
 <script src="/app/js/data-service.js"></script>
@@ -80,14 +81,14 @@
           ${ARS.can('workOrders.create') ? `<a href="/app/work-orders.html?truckId=${truckId}&customerId=${t.customerId}" class="btn btn--primary"><i class="fas fa-plus"></i> New WO</a>` : ''}
         </div>
       </div>
-      <div class="kpi-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:18px">
+      <div class="kpi-grid" style="margin-bottom:18px">
         <div class="kpi-card"><div class="kpi-card__label">Mileage</div><div class="kpi-card__value" style="font-size:1.2rem">${t.mileage}</div></div>
         <div class="kpi-card"><div class="kpi-card__label">Last PM</div><div class="kpi-card__value" style="font-size:1rem">${t.lastPM}</div></div>
         <div class="kpi-card"><div class="kpi-card__label">Next PM</div><div class="kpi-card__value ${t.status==='PM Due'?'red':''}" style="font-size:1rem">${t.nextPM}</div></div>
         <div class="kpi-card"><div class="kpi-card__label">Status</div><div style="margin-top:8px">${chip(t.status)}</div></div>
       </div>
       <div class="app-card" style="margin-bottom:16px">
-        <div class="app-card__body" style="font-size:.88rem;display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div class="app-card__body detail-info-grid">
           <div><span style="color:var(--steel)">VIN:</span> ${t.vin || '—'}</div>
           <div><span style="color:var(--steel)">Customer:</span> ${cust ? `<a href="/app/customer-detail.html?id=${cust.id}">${cust.name}</a>` : t.owner}</div>
         </div>
@@ -96,7 +97,7 @@
         <div class="app-card__header"><div class="app-card__title">Service History</div></div>
         <div class="table-wrap" style="border:none">
           <table><thead><tr><th>WO</th><th>Date</th><th>Description</th><th>Status</th><th>Total</th></tr></thead>
-          <tbody>${wos.map(w => `<tr><td><a href="/app/work-order-detail.html?id=${w.id}">${w.id}</a></td><td>${w.date}</td><td>${w.desc}</td><td>${chip(w.status)}</td><td>${fmt$(w.total)}</td></tr>`).join('') || '<tr><td colspan="5">No service history</td></tr>'}</tbody></table>
+            <tbody>${wos.map(w => `<tr><td><a href="/app/work-order-detail.html?id=${w.id}">${w.id}</a></td><td>${w.date}</td><td class="td-wrap">${w.desc}</td><td>${chip(w.status)}</td><td>${fmt$(w.total)}</td></tr>`).join('') || '<tr><td colspan="5">No service history</td></tr>'}</tbody></table>
         </div>
       </div>`;
 

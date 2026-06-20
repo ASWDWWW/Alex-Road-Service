@@ -50,14 +50,31 @@ document.addEventListener('DOMContentLoaded', () => {
     const isOpen = burger.classList.toggle('open');
     navLinks?.classList.toggle('open', isOpen);
     burger.setAttribute('aria-expanded', isOpen);
+    if (!isOpen) {
+      document.querySelectorAll('.nav__drop.open').forEach(el => el.classList.remove('open'));
+    }
+  });
+
+  document.querySelectorAll('.nav__drop-toggle').forEach(toggle => {
+    toggle.addEventListener('click', (e) => {
+      if (window.innerWidth > 1024) return;
+      e.preventDefault();
+      const drop = toggle.closest('.nav__drop');
+      if (!drop) return;
+      document.querySelectorAll('.nav__drop.open').forEach(el => {
+        if (el !== drop) el.classList.remove('open');
+      });
+      drop.classList.toggle('open');
+    });
   });
 
   // Close on link click
-  document.querySelectorAll('.nav__link, .nav__drop-item').forEach(el => {
+  document.querySelectorAll('.nav__link:not(.nav__drop-toggle), .nav__drop-item, .nav__call-mobile').forEach(el => {
     el.addEventListener('click', () => {
       burger?.classList.remove('open');
       navLinks?.classList.remove('open');
       burger?.setAttribute('aria-expanded', 'false');
+      document.querySelectorAll('.nav__drop.open').forEach(d => d.classList.remove('open'));
     });
   });
 

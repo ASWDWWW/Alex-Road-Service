@@ -81,6 +81,13 @@
           <button type="submit" id="loginBtn" class="btn btn--primary btn--full btn--lg">SIGN IN</button>
         </form>
 
+        <button type="button" id="demoLoginBtn" class="btn btn--secondary btn--full btn--lg" style="margin-top:12px">
+          <i class="fas fa-flask"></i> TRY DEMO ACCOUNT
+        </button>
+        <p style="font-size:.78rem;color:var(--warm-gray);text-align:center;margin-top:10px">
+          Demo: <code style="font-size:.78rem">demo@alexroadservice.com</code> / <code style="font-size:.78rem">Demo2026!</code>
+        </p>
+
         <div class="login-divider"><span>Secure Access</span></div>
         <div style="background:var(--off-white);border-radius:10px;padding:16px;font-size:0.82rem;color:var(--steel);display:flex;align-items:flex-start;gap:10px">
           <i class="fas fa-lock" style="color:var(--warm-gray);margin-top:2px"></i>
@@ -91,8 +98,11 @@
   </div>
 
   <script src="/js/components.js"></script>
+  <script src="/js/main.js"></script>
   <script src="/js/firebase-config.js"></script>
   <script src="/app/js/utils.js"></script>
+  <script src="/app/js/demo-mode.js"></script>
+  <script src="/app/js/data-store.js"></script>
   <script src="/app/js/auth.js"></script>
   <script>
     const form = document.getElementById('loginForm');
@@ -103,11 +113,13 @@
       try {
         await ARS.Auth.init();
         if (await ARS.Auth.validateSession()) {
-          window.location.href = '/app/dashboard.html';
+          window.location.href = ARS.isDemoMode?.() ? '/app/dashboard.html?demo=1' : '/app/dashboard.html';
         }
       } catch (err) {
-        errMsg.textContent = err.message;
-        errBox.classList.add('show');
+        if (!ARS.isDemoMode?.()) {
+          errMsg.textContent = err.message;
+          errBox.classList.add('show');
+        }
       }
       const params = new URLSearchParams(location.search);
       if (params.get('error') === 'firebase') {
@@ -150,12 +162,30 @@
       loginBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> SIGNING IN...';
       try {
         await ARS.Auth.login(email, password, remember);
-        window.location.href = '/app/dashboard.html';
+        const dest = ARS.isDemoMode?.() ? '/app/dashboard.html?demo=1' : '/app/dashboard.html';
+        window.location.href = dest;
       } catch (err) {
         errMsg.textContent = err.message;
         errBox.classList.add('show');
         loginBtn.disabled = false;
         loginBtn.innerHTML = 'SIGN IN';
+      }
+    });
+
+    document.getElementById('demoLoginBtn')?.addEventListener('click', async () => {
+      errBox.classList.remove('show');
+      resetBox.classList.remove('show');
+      const btn = document.getElementById('demoLoginBtn');
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> LOADING DEMO...';
+      try {
+        await ARS.Auth.login(ARS.Demo.EMAIL, ARS.Demo.PASSWORD);
+        window.location.href = '/app/dashboard.html?demo=1';
+      } catch (err) {
+        errMsg.textContent = err.message;
+        errBox.classList.add('show');
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-flask"></i> TRY DEMO ACCOUNT';
       }
     });
   </script>

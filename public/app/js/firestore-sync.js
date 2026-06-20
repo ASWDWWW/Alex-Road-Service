@@ -25,6 +25,7 @@ ARS.FirestoreSync = {
   },
 
   async init() {
+    if (ARS.isDemoMode?.()) return false;
     if (!window.ARSFirebase?.configured || !window.ARSFirebase.db) return false;
     try {
       const mods = await this._loadModules();

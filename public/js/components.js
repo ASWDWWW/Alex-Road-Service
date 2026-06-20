@@ -36,7 +36,7 @@ function buildNav() {
 <nav class="nav" id="mainNav">
   <a href="/" class="nav__logo">
     <div class="nav__logo-mark">A</div>
-    ALEX ROAD SERVICE
+    <span class="nav__logo-text">ALEX ROAD SERVICE</span>
   </a>
 
   <div class="nav__links" id="navLinks">
@@ -55,6 +55,9 @@ function buildNav() {
     ${link('/reviews.html', 'Reviews')}
     ${link('/financing.html', 'Financing')}
     ${link('/contact.html', 'Contact')}
+    <a href="${SITE.phoneTel}" class="nav__call-mobile btn btn--primary btn--full">
+      <i class="fas fa-phone"></i> CALL NOW — ${SITE.phoneEmerg}
+    </a>
   </div>
 
   <div class="nav__actions">

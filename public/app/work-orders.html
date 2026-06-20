@@ -140,6 +140,7 @@
 </div>
 
 <script src="/app/js/utils.js"></script>
+<script src="/app/js/demo-mode.js"></script>
 <script src="/app/js/data-store.js"></script>
 <script src="/app/js/auth.js"></script>
 <script src="/app/js/data-service.js"></script>
@@ -169,8 +170,8 @@
         <td class="td-mono td-bold" style="white-space:nowrap"><a href="/app/work-order-detail.html?id=${w.id}" style="color:inherit;text-decoration:none">${w.id}</a></td>
         <td class="td-muted" style="white-space:nowrap">${w.date}</td>
         <td class="td-primary">${w.customerName}</td>
-        <td class="td-muted" style="font-size:.76rem;max-width:140px;line-height:1.4">${w.truckLabel || '—'}</td>
-        <td style="font-size:.8rem;max-width:200px;color:var(--steel)">${w.desc}</td>
+        <td class="td-muted td-wrap" style="font-size:.76rem;line-height:1.4">${w.truckLabel || '—'}</td>
+        <td class="td-wrap" style="font-size:.8rem;color:var(--steel)">${w.desc}</td>
         <td class="td-muted">${w.tech || '—'}</td>
         <td style="text-align:right">${fmt$(w.labor)}</td>
         <td style="text-align:right">${fmt$(w.parts)}</td>

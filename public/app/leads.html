@@ -41,6 +41,7 @@
   </div>
 </main>
 <script src="/app/js/utils.js"></script>
+<script src="/app/js/demo-mode.js"></script>
 <script src="/app/js/data-store.js"></script>
 <script src="/app/js/auth.js"></script>
 <script src="/app/js/data-service.js"></script>
@@ -68,7 +69,7 @@
         <td>${l.service || '—'}</td>
         <td class="td-muted">${l.company || '—'}</td>
         <td class="td-muted">${l.location || '—'}</td>
-        <td style="font-size:.8rem;max-width:200px">${l.message || '—'}</td>
+        <td class="td-wrap" style="font-size:.8rem">${l.message || '—'}</td>
       </tr>`).join('') : `<tr><td colspan="8"><div class="empty-state"><div class="empty-state__title">No leads yet</div></div></td></tr>`;
   }
   ARS.Pages.waitReady(() => {

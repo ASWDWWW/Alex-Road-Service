@@ -53,6 +53,12 @@
     .top-list-value { font-weight: 700; font-size: .9rem; color: var(--black); }
 
     .service-bar-label { width: 170px; font-size: .8rem; font-weight: 500; color: var(--steel); flex-shrink: 0; }
+    .report-range-select { width: 180px; height: 36px; font-size: .82rem; max-width: 100%; }
+
+    @media (max-width: 768px) {
+      .service-bar-label { width: 90px; font-size: .72rem; }
+      .chart-month-label { width: 32px; font-size: .7rem; }
+    }
 
     .aging-bucket { display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; border-radius: 7px; }
 
@@ -92,7 +98,7 @@
 
       <div class="page-header__actions">
 
-        <select class="form-select" style="width:180px;height:36px;font-size:.82rem" id="reportRange">
+        <select class="form-select report-range-select" id="reportRange">
 
           <option value="quarter">Current Quarter</option>
 
@@ -220,7 +226,7 @@
 
 
 
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:22px">
+    <div class="reports-summary-grid">
 
       <div class="app-card">
 
@@ -304,6 +310,7 @@
 
 <script src="/app/js/utils.js?v=20260609c"></script>
 
+<script src="/app/js/demo-mode.js"></script>
 <script src="/app/js/data-store.js?v=20260609c"></script>
 
 <script src="/app/js/auth.js?v=20260609c"></script>

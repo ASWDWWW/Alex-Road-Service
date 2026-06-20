@@ -96,8 +96,11 @@ Creates these users:
 | office@alexroadservice.com | office | password |
 | tech@alexroadservice.com | technician | password |
 | developer@alexroadservice.com | developer | ChangeMe-Dev-2026! |
+| demo@alexroadservice.com | demo | Demo2026! |
 
-**Change all passwords** in Firebase Console → Authentication before going to production.
+The **demo** account is client-side only (no Firebase user created). It loads isolated sample data and simulates payments. See [`Development Docs/STAFF_CREDENTIALS.md`](../Development%20Docs/STAFF_CREDENTIALS.md).
+
+**Change all passwords** in Firebase Console → Authentication before going to production. (Demo password is intentional for public sandbox use.)
 
 ---
 
@@ -109,6 +112,7 @@ Creates these users:
 | **admin** | Full shop ops + settings |
 | **office** | Customers, WOs, invoices, payments |
 | **technician** | Assigned WOs, read customers/trucks/inventory |
+| **demo** | Full sandbox with sample data (no Firestore/Stripe) |
 
 ---
 

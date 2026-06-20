@@ -25,6 +25,12 @@ Open http://localhost:3000 — ops platform requires Firebase Authentication (no
 
 Bootstrap accounts via `/setup.html` or `npm run bootstrap`, then sign in at `/login.html` with Firebase credentials.
 
+| Email | Password | Notes |
+|-------|----------|-------|
+| demo@alexroadservice.com | Demo2026! | Demo sandbox — no bootstrap required |
+
+Full staff list: [`Development Docs/STAFF_CREDENTIALS.md`](../Development%20Docs/STAFF_CREDENTIALS.md)
+
 Payments are collected only through Stripe Checkout — see `docs/STRIPE_SETUP.md`.
 
 ## Incident response

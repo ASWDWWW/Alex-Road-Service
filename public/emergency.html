@@ -33,15 +33,19 @@
       background: var(--red);
     }
     .emerg-hero__inner { position: relative; z-index: 1; display: grid; grid-template-columns: 1fr auto; gap: 48px; align-items: center; }
-    .emerg-hero__title { font-family: var(--font-head); font-size: clamp(3rem, 8vw, 6rem); color: var(--white); line-height: 0.95; margin-bottom: 16px; }
+    .emerg-hero__title { font-family: var(--font-head); font-size: var(--text-hero); color: var(--white); line-height: 0.95; margin-bottom: 16px; }
     .emerg-hero__title em { color: var(--red); font-style: normal; }
-    .emerg-hero__sub { color: rgba(255,255,255,.65); font-size: 1.1rem; max-width: 480px; margin-bottom: 36px; line-height: 1.7; }
-    .emerg-call-pill { background: var(--red); color: var(--white); display: inline-flex; align-items: center; gap: 12px; padding: 6px 6px 6px 24px; border-radius: var(--r-chip); font-family: var(--font-head); font-size: 1.4rem; letter-spacing: .02em; text-decoration: none; transition: background .2s; }
+    .emerg-hero__sub { color: rgba(255,255,255,.65); font-size: var(--text-lg); max-width: 480px; margin-bottom: 36px; line-height: 1.7; }
+    .emerg-call-pill { background: var(--red); color: var(--white); display: inline-flex; align-items: center; gap: 12px; padding: 6px 6px 6px 24px; border-radius: var(--r-chip); font-family: var(--font-head); font-size: clamp(1rem, 0.9rem + 0.6vw, 1.4rem); letter-spacing: .02em; text-decoration: none; transition: background .2s; max-width: 100%; }
     .emerg-call-pill:hover { background: var(--dark-red); }
     .emerg-call-pill__icon { width: 44px; height: 44px; background: rgba(0,0,0,.2); border-radius: var(--r-chip); display: flex; align-items: center; justify-content: center; font-size: 1rem; }
+    .call-block-side { min-width: 280px; max-width: 360px; }
     @media (max-width: 768px) {
-      .emerg-hero__inner { grid-template-columns: 1fr; }
-      .call-block-side { display: none; }
+      .emerg-hero { padding: 64px 0; min-height: auto; }
+      .emerg-hero__inner { grid-template-columns: 1fr; gap: 32px; }
+      .call-block-side { display: none; min-width: 0; width: 100%; }
+      #mobileCallBlock { display: block !important; }
+      .emerg-call-pill { font-size: clamp(0.95rem, 0.88rem + 0.5vw, 1.1rem); width: 100%; justify-content: center; white-space: nowrap; padding: 10px 16px; }
     }
   </style>
 </head>
@@ -68,7 +72,7 @@
             <span class="emerg-call-pill__icon"><i class="fas fa-phone"></i></span>
           </a>
         </div>
-        <div class="call-block-side fade-up" style="min-width:300px">
+        <div class="call-block-side fade-up">
           <div class="call-block">
             <div class="call-block__label">Emergency Dispatch Line</div>
             <div class="call-block__num">(732)<br>938-0713</div>
@@ -216,10 +220,5 @@
   <div id="footer-placeholder"></div>
   <script src="/js/components.js"></script>
   <script src="/js/main.js"></script>
-  <script>
-    if (window.innerWidth <= 768) {
-      document.getElementById('mobileCallBlock').style.display = 'block';
-    }
-  </script>
 </body>
 </html>

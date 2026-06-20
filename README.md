@@ -34,7 +34,9 @@ Ops platform: **http://localhost:3000/login.html**
 
 ### Staff login
 
-Firebase Authentication is **required**. Bootstrap staff accounts once via `/setup.html` or `npm run bootstrap`, then sign in at `/login.html`.
+Firebase Authentication is **required** for production staff. Bootstrap accounts once via `/setup.html` or `npm run bootstrap`, then sign in at `/login.html`.
+
+**Demo sandbox:** `demo@alexroadservice.com` / `Demo2026!` — full platform preview with sample data (see [`Development Docs/STAFF_CREDENTIALS.md`](Development%20Docs/STAFF_CREDENTIALS.md)).
 
 See [`docs/FIREBASE_SETUP.md`](docs/FIREBASE_SETUP.md) and [`docs/STRIPE_SETUP.md`](docs/STRIPE_SETUP.md).
 

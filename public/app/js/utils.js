@@ -1,6 +1,6 @@
 /* Alex Road Service — Shared Utilities */
 window.ARS = window.ARS || {};
-ARS.APP_BUILD = '20260609d';
+ARS.APP_BUILD = '20260619g';
 
 ARS.fmtMoney = (n) => '$' + Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -44,9 +44,38 @@ ARS.calcTotals = (labor, parts, settings = {}) => {
   return { labor: laborNum, parts: partsNum, tax, total: laborNum + partsNum + tax };
 };
 
+ARS.DEMO_SESSION_KEY = 'ars_demo_session';
+ARS.DEMO_STORE_KEY = 'ars_platform_demo_v1';
+
+ARS.isDemoMode = () => {
+  try {
+    if (sessionStorage.getItem(ARS.DEMO_SESSION_KEY) === '1') return true;
+    if (localStorage.getItem(ARS.DEMO_SESSION_KEY) === '1') return true;
+    if (new URLSearchParams(window.location.search).get('demo') === '1') return true;
+    const cached = sessionStorage.getItem('ars_session') || localStorage.getItem('ars_session');
+    if (cached && JSON.parse(cached).role === 'demo') return true;
+  } catch { /* ignore */ }
+  return ARS.Auth?.getUser?.()?.role === 'demo';
+};
+
+ARS.markDemoSession = () => {
+  try {
+    sessionStorage.setItem(ARS.DEMO_SESSION_KEY, '1');
+    localStorage.setItem(ARS.DEMO_SESSION_KEY, '1');
+  } catch { /* ignore */ }
+};
+
+ARS.clearDemoSession = () => {
+  try {
+    sessionStorage.removeItem(ARS.DEMO_SESSION_KEY);
+    localStorage.removeItem(ARS.DEMO_SESSION_KEY);
+  } catch { /* ignore */ }
+  ARS.Demo?.clearSession?.();
+};
+
 ARS.can = (action) => {
   const role = ARS.Auth?.getRole?.();
-  if (role === 'developer') return true;
+  if (role === 'developer' || role === 'demo') return true;
   const matrix = ARS.PERMISSIONS || {};
   const allowed = matrix[action];
   if (!allowed) return true;
@@ -82,6 +111,7 @@ ARS.ROLE_LABELS = {
   office: 'Office Staff',
   technician: 'Technician',
   developer: 'Developer',
+  demo: 'Demo Mode',
 };
 
 ARS.NAV_BY_ROLE = {
@@ -91,7 +121,7 @@ ARS.NAV_BY_ROLE = {
   technician: ['/app/dashboard.html', '/app/customers.html', '/app/trucks.html', '/app/work-orders.html', '/app/inventory.html'],
 };
 
-ARS.canAccessLeads = () => ['admin', 'office', 'developer'].includes(ARS.Auth?.getRole?.() || '');
+ARS.canAccessLeads = () => ['admin', 'office', 'developer', 'demo'].includes(ARS.Auth?.getRole?.() || '');
 
 ARS.SERVICE_TYPES = [
   'PM Service', 'DOT Inspection', 'Brake Service', 'Engine Repair',

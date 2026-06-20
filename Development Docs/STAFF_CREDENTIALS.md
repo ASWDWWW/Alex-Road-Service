@@ -15,6 +15,9 @@
 | admin@alexroadservice.com | `password` | admin | Full shop ops + settings |
 | office@alexroadservice.com | `password` | office | Customers, work orders, invoices, payments, leads |
 | tech@alexroadservice.com | `password` | technician | Assigned work orders, read customers/trucks/inventory |
+| demo@alexroadservice.com | `Demo2026!` | demo | Full sandbox — sample data only; resets on each demo sign-in (no Firebase) |
+
+**Demo account:** Use **Try Demo Account** on `/login.html` or sign in with the credentials above. Data is isolated in the browser and does not sync to Firestore. Payments are simulated (no Stripe charge).
 
 ---
 

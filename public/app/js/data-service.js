@@ -13,6 +13,7 @@ ARS.Data = {
   _techs: [],
 
   needsLegacyPurge(state = ARS.Store.load()) {
+    if (ARS.isDemoMode?.() || state.isDemoDataset) return false;
     if (state.demoPurged) return false;
     const customers = state.customers || [];
     if (customers.some((c) => LEGACY_CUSTOMER_ID.test(c.id))) return true;
@@ -24,6 +25,7 @@ ARS.Data = {
   },
 
   clearLocalOperationalData() {
+    if (ARS.isDemoMode?.()) return;
     const s = ARS.Store.load();
     OPERATIONAL_COLLECTIONS.forEach((name) => { s[name] = []; });
     s.counters = { wo: 0, est: 0, inv: 0, pay: 0, cust: 0, truck: 0, part: 0 };
@@ -33,6 +35,7 @@ ARS.Data = {
   },
 
   async purgeLegacyDemoData() {
+    if (ARS.isDemoMode?.()) return false;
     const s = ARS.Store.load();
     if (s.demoPurged) return false;
     const needsPurge = this.needsLegacyPurge(s);
@@ -53,6 +56,14 @@ ARS.Data = {
   },
 
   async init() {
+    if (ARS.isDemoMode?.()) {
+      ARS.Demo?.getState?.();
+      this._techs = ['Mike Santos', 'Alex Rodriguez', 'Sarah Torres'];
+      this.refreshTruckPMStatus();
+      this.refreshOverdueInvoices();
+      this.refreshNotifications();
+      return;
+    }
     if (ARS.FirestoreSync?.listTechs) {
       this._techs = await ARS.FirestoreSync.listTechs();
     }
@@ -517,6 +528,53 @@ ARS.Data = {
 
   async recordPayment() {
     throw new Error('Manual payments are disabled. Use Stripe Checkout to collect payment.');
+  },
+
+  async recordDemoPayment(invoiceId, amount) {
+    if (!ARS.isDemoMode?.()) throw new Error('Demo payments are only available in demo mode.');
+    const payAmount = Number(amount);
+    if (!payAmount || payAmount <= 0) throw new Error('Invalid payment amount.');
+
+    const s = ARS.Store.load();
+    const invIdx = s.invoices.findIndex((inv) => inv.id === invoiceId);
+    if (invIdx < 0) throw new Error('Invoice not found');
+
+    const inv = s.invoices[invIdx];
+    if (['Paid', 'Written Off'].includes(inv.status)) throw new Error('Invoice is already closed.');
+
+    const balance = inv.total - (inv.amountPaid || 0);
+    if (payAmount > balance + 0.01) throw new Error(`Amount cannot exceed balance (${ARS.fmtMoney(balance)}).`);
+
+    const { num, year } = ARS.Store.bumpCounter('pay');
+    const payId = ARS.nextId('PAY', year, num);
+    const now = new Date();
+
+    s.payments.unshift({
+      id: payId,
+      date: ARS.fmtDate(now),
+      customerName: inv.customerName || '',
+      invoiceId,
+      amount: payAmount,
+      method: 'Demo Stripe',
+      status: 'Completed',
+      stripeSessionId: `demo_cs_${ARS.uid()}`,
+      createdAt: now.toISOString(),
+      createdBy: ARS.Demo?.EMAIL || 'demo',
+    });
+
+    const newPaid = (inv.amountPaid || 0) + payAmount;
+    const newBalance = inv.total - newPaid;
+    s.invoices[invIdx] = {
+      ...inv,
+      amountPaid: newPaid,
+      status: newBalance <= 0.01 ? 'Paid' : 'Partially Paid',
+      version: (inv.version || 1) + 1,
+    };
+
+    ARS.Store.save(s);
+    this._audit({ action: 'payment.demo', entityId: payId, entityType: 'payment', invoiceId, amount: payAmount });
+    this.refreshNotifications();
+    return { paymentId: payId, invoice: s.invoices[invIdx] };
   },
 
   /* ─── INVENTORY ─── */

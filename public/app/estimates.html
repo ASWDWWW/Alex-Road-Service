@@ -27,7 +27,7 @@
     </div>
 
     <!-- KPI Row -->
-    <div class="kpi-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:18px">
+    <div class="kpi-grid" style="margin-bottom:18px">
       <div class="kpi-card">
         <div class="kpi-card__row">
           <div><div class="kpi-card__label">Total Estimates</div><div class="kpi-card__value" id="kpiEstTotal">0</div></div>
@@ -118,6 +118,7 @@
 </div>
 
 <script src="/app/js/utils.js"></script>
+<script src="/app/js/demo-mode.js"></script>
 <script src="/app/js/data-store.js"></script>
 <script src="/app/js/auth.js"></script>
 <script src="/app/js/data-service.js"></script>
@@ -149,7 +150,7 @@
         <td class="td-muted">${e.date}</td>
         <td class="td-primary">${e.customerName}</td>
         <td class="td-muted" style="font-size:.76rem">${e.truckLabel || '—'}</td>
-        <td style="font-size:.8rem;color:var(--steel);max-width:200px">${e.desc}</td>
+        <td class="td-wrap" style="font-size:.8rem;color:var(--steel)">${e.desc}</td>
         <td style="text-align:right">${fmt$(e.labor)}</td>
         <td style="text-align:right">${fmt$(e.parts)}</td>
         <td style="text-align:right;font-weight:700">${fmt$(e.total)}</td>
