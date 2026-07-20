@@ -6,7 +6,7 @@
   <link rel="icon" href="/favicon.ico" sizes="any">
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <title>Dashboard | Alex Road Service Ops</title>
-  <link rel="stylesheet" href="/app/css/app.css">
+  <link rel="stylesheet" href="/app/css/app.css?v=20260720w">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
 </head>
 <body class="app-body">
@@ -67,7 +67,7 @@
         <div class="app-card__title"><i class="fas fa-clipboard-list" style="color:var(--red);margin-right:8px"></i>Recent Work Orders</div>
         <div style="display:flex;gap:8px">
           <a href="/app/work-orders.html" class="btn btn--ghost btn--sm">View All <i class="fas fa-arrow-right"></i></a>
-          <a href="/app/work-orders.html" class="btn btn--primary btn--sm"><i class="fas fa-plus"></i> New WO</a>
+          <a href="#" id="dashNewWoBtn" class="btn btn--primary btn--sm"><i class="fas fa-plus"></i> New WO</a>
         </div>
       </div>
       <div class="table-wrap" style="border:none;border-radius:0">
@@ -77,7 +77,7 @@
               <th>WO #</th><th>Date</th><th>Customer</th><th>Truck</th><th>Tech</th><th>Status</th><th style="text-align:right">Total</th>
             </tr>
           </thead>
-          <tbody id="dashWoTable"></tbody>
+          <tbody id="dashWoTable"><tr><td colspan="7"><div class="loading-state"><div class="loading-state__spinner"></div><div class="loading-state__text">Loading…</div></div></td></tr></tbody>
         </table>
       </div>
     </div>
@@ -140,13 +140,13 @@
   </div><!-- /app-content -->
 </main>
 
-<script src="/app/js/utils.js"></script>
-<script src="/app/js/demo-mode.js"></script>
-<script src="/app/js/data-store.js"></script>
-<script src="/app/js/auth.js"></script>
-<script src="/app/js/data-service.js"></script>
-<script src="/app/js/page-scripts.js"></script>
-<script src="/app/js/app-components.js"></script>
+<script src="/app/js/utils.js?v=20260720w"></script>
+<script src="/app/js/demo-mode.js?v=20260720w"></script>
+<script src="/app/js/data-store.js?v=20260720w"></script>
+<script src="/app/js/auth.js?v=20260720w"></script>
+<script src="/app/js/data-service.js?v=20260720w"></script>
+<script src="/app/js/page-scripts.js?v=20260720w"></script>
+<script src="/app/js/app-components.js?v=20260720w"></script>
 <script>
   const SCHED_DOTS = { 'In Progress': 'red', 'Open': 'amber', 'Waiting Parts': 'amber', default: 'green' };
 
@@ -162,6 +162,9 @@
     document.getElementById('dashLowStock').textContent = kpis.lowStockCount;
     document.getElementById('dashOverdueTrend').innerHTML = `<span>${kpis.overdueCount} overdue</span>`;
     document.getElementById('dashOosTrend').innerHTML = `<span>${kpis.outOfStockCount} completely out of stock</span>`;
+    document.getElementById('dashRevenueTrend').innerHTML = kpis.refundedMTD
+      ? `<span>Net of ${fmt$(kpis.refundedMTD)} refunded MTD</span>`
+      : `<span>Payments received this month</span>`;
 
     const wosToday = ARS.Data.listWorkOrders().filter(w => {
       const d = new Date(w.createdAt || w.date);
@@ -176,54 +179,75 @@
     document.getElementById('snapRevenue').textContent = fmt$(kpis.revenueMTD);
 
     const recent = ARS.Data.listWorkOrders().slice(0, 6);
-    document.getElementById('dashWoTable').innerHTML = recent.map(w => `
-      <tr>
-        <td class="td-mono td-bold"><a href="/app/work-order-detail.html?id=${w.id}" style="color:inherit;text-decoration:none">${w.id}</a></td>
+    document.getElementById('dashWoTable').innerHTML = recent.length
+      ? recent.map(w => `
+      <tr data-row-id="${w.id}" style="cursor:pointer">
+        <td class="td-mono td-bold">${ARS.Pages.entityLink(w.id, `/app/work-order-detail.html?id=${w.id}`)}</td>
         <td class="td-muted">${w.date}</td>
-        <td class="td-primary">${w.customerName}</td>
-        <td class="td-muted" style="font-size:.78rem">${w.truckLabel || '—'}</td>
-        <td class="td-muted">${w.tech || '—'}</td>
+        <td class="td-primary">${ARS.Pages.entityLink(w.customerName, w.customerId ? `/app/customer-detail.html?id=${w.customerId}` : '')}</td>
+        <td class="td-muted" style="font-size:.78rem">${w.truckId ? ARS.Pages.entityLink(w.truckLabel || '—', `/app/truck-detail.html?id=${w.truckId}`) : (w.truckLabel || '—')}</td>
+        <td class="td-muted">${ARS.Data.formatWoTechs(w)}</td>
         <td>${chip(w.status)}</td>
         <td style="text-align:right;font-weight:700">${fmt$(w.total)}</td>
       </tr>
-    `).join('');
+    `).join('')
+      : ARS.Pages.tablePlaceholder(7, 'No work orders yet', 'fa-clipboard-list');
 
     document.getElementById('dashScheduleTitle').textContent = `Today's Schedule — ${todayStr}`;
     const openWOs = ARS.Data.listWorkOrders().filter(w => ['Open', 'In Progress', 'Waiting Parts'].includes(w.status)).slice(0, 3);
     const pendingEst = ARS.Data.listEstimates().filter(e => ['Pending', 'Sent'].includes(e.status)).slice(0, 1);
     const pmDue = ARS.Data.trucksPMDue(30).slice(0, 1);
     const scheduleItems = [
-      ...openWOs.map(w => ({ time: null, dot: SCHED_DOTS[w.status] || 'amber', title: `${w.id} · ${w.customerName}`, sub: `${w.desc} — ${w.tech || 'Unassigned'}` })),
-      ...pendingEst.map(e => ({ time: null, dot: 'green', title: `${e.id} · ${e.customerName}`, sub: `Estimate follow-up — ${e.desc}` })),
-      ...pmDue.map(t => ({ time: null, dot: 'green', title: `PM Due · ${t.make} ${t.model} (Unit ${t.unit})`, sub: `Schedule PM with ${t.owner}` })),
+      ...openWOs.map(w => ({ href: `/app/work-order-detail.html?id=${w.id}`, time: null, dot: SCHED_DOTS[w.status] || 'amber', title: `${w.id} · ${w.customerName}`, sub: `${w.desc} — ${ARS.Data.formatWoTechs(w, 'Unassigned')}` })),
+      ...pendingEst.map(e => ({ href: `/app/estimate-detail.html?id=${e.id}`, time: null, dot: 'green', title: `${e.id} · ${e.customerName}`, sub: `Estimate follow-up — ${e.desc}` })),
+      ...pmDue.map(t => ({ href: `/app/truck-detail.html?id=${t.id}`, time: null, dot: 'green', title: `PM Due · ${t.make} ${t.model} (Unit ${t.unit})`, sub: `Schedule PM with ${t.owner}` })),
     ].slice(0, 5);
 
-    document.getElementById('dashSchedule').innerHTML = scheduleItems.length ? scheduleItems.map((item) => `
-      <div class="sched-item">
+    document.getElementById('dashSchedule').innerHTML = scheduleItems.length ? scheduleItems.map((item) => {
+      const inner = `
         <div class="sched-time">${item.time || 'Today'}</div>
         <div class="sched-dot ${item.dot}"></div>
         <div>
           <div class="sched-title">${item.title}</div>
           <div class="sched-sub">${item.sub}</div>
-        </div>
-      </div>
-    `).join('') : '<div style="padding:20px;color:var(--steel);font-size:.85rem">No scheduled items</div>';
+        </div>`;
+      return item.href
+        ? `<a href="${ARS.Pages.appHref(item.href)}" class="sched-item" style="text-decoration:none;color:inherit">${inner}</a>`
+        : `<div class="sched-item">${inner}</div>`;
+    }).join('') : (ARS.Pages.isDataReady()
+      ? '<div style="padding:20px;color:var(--steel);font-size:.85rem">No scheduled items</div>'
+      : '<div class="loading-state" style="padding:24px"><div class="loading-state__spinner"></div><div class="loading-state__text">Loading…</div></div>');
 
     const alerts = ARS.Data.getAlerts();
     const alertClass = { red: 'alert-item--red', amber: 'alert-item--amber', blue: 'alert-item--blue' };
-    document.getElementById('dashAlerts').innerHTML = alerts.length ? alerts.map(a => `
-      <div class="alert-item ${alertClass[a.type] || 'alert-item--blue'}">
+    document.getElementById('dashAlerts').innerHTML = alerts.length ? alerts.map(a => {
+      const inner = `
         <i class="fas ${a.icon} alert-item__icon"></i>
         <div>
           <div class="alert-item__title">${a.title}</div>
           <div class="alert-item__desc">${a.desc}</div>
-        </div>
-      </div>
-    `).join('') : '<div style="padding:8px;color:var(--steel);font-size:.85rem">No alerts</div>';
+        </div>`;
+      const cls = `alert-item ${alertClass[a.type] || 'alert-item--blue'}`;
+      return a.href
+        ? `<a href="${ARS.Pages.appHref(a.href)}" class="${cls}" style="text-decoration:none;color:inherit">${inner}</a>`
+        : `<div class="${cls}">${inner}</div>`;
+    }).join('') : (ARS.Pages.isDataReady()
+      ? '<div style="padding:8px;color:var(--steel);font-size:.85rem">No alerts</div>'
+      : '<div class="loading-state" style="padding:16px"><div class="loading-state__spinner"></div><div class="loading-state__text">Loading…</div></div>');
   }
 
   ARS.Pages.waitReady(() => {
     renderDashboard();
+    ARS.Pages.bindKpiFilter('dashOpenWOs', '/app/work-orders.html?status=actionable');
+    ARS.Pages.bindKpiFilter('dashOutstanding', '/app/invoices.html?status=Overdue');
+    ARS.Pages.bindKpiFilter('dashLowStock', '/app/inventory.html?status=attention');
+    const newWoBtn = document.getElementById('dashNewWoBtn');
+    if (newWoBtn) newWoBtn.href = ARS.Pages.appHref('/app/work-orders.html?open=create');
+    document.getElementById('dashWoTable')?.addEventListener('click', (e) => {
+      if (e.target.closest('a,button')) return;
+      const tr = e.target.closest('tr[data-row-id]');
+      if (tr) window.location.href = ARS.Pages.appHref(`/app/work-order-detail.html?id=${tr.dataset.rowId}`);
+    });
     document.addEventListener('ars:data-changed', renderDashboard);
   });
 </script>

@@ -6,7 +6,7 @@
   <link rel="icon" href="/favicon.ico" sizes="any">
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <title>Payments | Alex Road Service Ops</title>
-  <link rel="stylesheet" href="/app/css/app.css">
+  <link rel="stylesheet" href="/app/css/app.css?v=20260720w">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
 </head>
 <body class="app-body">
@@ -44,10 +44,10 @@
       </div>
       <div class="kpi-card">
         <div class="kpi-card__row">
-          <div><div class="kpi-card__label">Completed</div><div class="kpi-card__value green" id="kpiPayCompleted">0</div></div>
+          <div><div class="kpi-card__label">Successful Charges</div><div class="kpi-card__value green" id="kpiPayCompleted">0</div></div>
           <div class="kpi-card__icon green"><i class="fas fa-check-circle"></i></div>
         </div>
-        <div class="kpi-card__trend" id="kpiPayCompletedCount"><span>successful charges</span></div>
+        <div class="kpi-card__trend" id="kpiPayCompletedCount"><span>kept this month (excludes full refunds)</span></div>
       </div>
       <div class="kpi-card">
         <div class="kpi-card__row">
@@ -63,6 +63,7 @@
       <div class="filter-tabs" id="payFilterTabs">
         <button class="filter-tab active" data-filter="all">All</button>
         <button class="filter-tab" data-filter="Stripe">Stripe</button>
+        <button class="filter-tab" data-filter="Refunded">Refunded <span class="filter-tab__badge" id="refundedTabBadge" hidden>0</span></button>
       </div>
       <div class="filter-search">
         <i class="fas fa-search"></i>
@@ -80,7 +81,7 @@
             <th style="text-align:right">Amount</th><th>Method</th><th>Status</th><th>Actions</th>
           </tr>
         </thead>
-        <tbody id="payTable"></tbody>
+        <tbody id="payTable"><tr><td colspan="8"><div class="loading-state"><div class="loading-state__spinner"></div><div class="loading-state__text">Loading…</div></div></td></tr></tbody>
       </table>
     </div>
 
@@ -109,16 +110,46 @@
   </div>
 </div>
 
-<script src="/app/js/utils.js"></script>
-<script src="/app/js/demo-mode.js"></script>
-<script src="/app/js/data-store.js"></script>
-<script src="/app/js/auth.js"></script>
-<script src="/app/js/data-service.js"></script>
-<script src="/app/js/documents.js"></script>
-<script src="/app/js/page-scripts.js"></script>
-<script src="/app/js/app-components.js"></script>
+<!-- Refund Modal -->
+<div class="modal-overlay" id="refundPayModal">
+  <div class="modal">
+    <div class="modal__header">
+      <div class="modal__title">Refund Stripe Payment</div>
+      <button class="modal__close" data-close-modal><i class="fas fa-times"></i></button>
+    </div>
+    <div class="modal__body">
+      <input type="hidden" id="refundPayId">
+      <div class="form-row"><label class="form-label">Payment</label><input class="form-input" id="refundPayLabel" readonly></div>
+      <div class="form-row"><label class="form-label">Refundable balance</label><input class="form-input" id="refundableLabel" readonly></div>
+      <div class="form-row"><label class="form-label">Refund amount ($) *</label><input class="form-input" id="refundAmount" type="number" min="0.01" step="0.01"></div>
+      <div class="form-row">
+        <label class="form-label">Reason</label>
+        <select class="form-select" id="refundReason">
+          <option value="requested_by_customer">Requested by customer</option>
+          <option value="duplicate">Duplicate charge</option>
+          <option value="fraudulent">Fraudulent</option>
+        </select>
+      </div>
+      <div class="form-row"><label class="form-label">Notes (optional)</label><input class="form-input" id="refundNotes" placeholder="Internal note"></div>
+      <p style="font-size:.8rem;color:var(--steel);margin-top:8px"><i class="fab fa-stripe" style="margin-right:6px"></i> Refunds the card through Stripe and updates the invoice balance automatically.</p>
+    </div>
+    <div class="modal__footer">
+      <button class="btn btn--secondary" data-close-modal>Cancel</button>
+      <button class="btn btn--primary" id="confirmRefundBtn"><i class="fas fa-undo"></i> Issue Refund</button>
+    </div>
+  </div>
+</div>
+
+<script src="/app/js/utils.js?v=20260720w"></script>
+<script src="/app/js/demo-mode.js?v=20260720w"></script>
+<script src="/app/js/data-store.js?v=20260720w"></script>
+<script src="/app/js/auth.js?v=20260720w"></script>
+<script src="/app/js/data-service.js?v=20260720w"></script>
+<script src="/app/js/documents.js?v=20260720w"></script>
+<script src="/app/js/page-scripts.js?v=20260720w"></script>
+<script src="/app/js/app-components.js?v=20260720w"></script>
 <script>
-  let activeFilter = 'all', searchVal = '';
+  let activeFilter = 'all', searchVal = '', urlState = {};
 
   const METHOD_ICON = { Stripe: 'fa-stripe', Card: 'fa-credit-card' };
 
@@ -131,45 +162,92 @@
   }
 
   function renderKpis() {
-    const payments = ARS.Data.listPayments();
-    const now = new Date();
-    const mtdStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    const mtd = payments.filter(p => new Date(p.createdAt || p.date) >= mtdStart);
-    const stripe = mtd.filter(p => p.method === 'Stripe');
-    const completed = mtd.filter(p => p.status === 'Completed');
-    const sum = (arr) => arr.reduce((s, p) => s + p.amount, 0);
-    const avg = mtd.length ? sum(mtd) / mtd.length : 0;
-    document.getElementById('kpiPayMTD').textContent = fmt$(sum(mtd));
-    document.getElementById('kpiPayCount').innerHTML = `<span>${mtd.length} payment${mtd.length !== 1 ? 's' : ''} this month</span>`;
-    document.getElementById('kpiPayStripe').textContent = fmt$(sum(stripe));
-    document.getElementById('kpiPayStripeCount').innerHTML = `<span>${stripe.length} Stripe charge${stripe.length !== 1 ? 's' : ''}</span>`;
-    document.getElementById('kpiPayCompleted').textContent = completed.length;
-    document.getElementById('kpiPayAvg').textContent = fmt$(avg);
+    const k = ARS.Data.getPaymentKPIs();
+    document.getElementById('kpiPayMTD').textContent = fmt$(k.receivedMTD);
+    document.getElementById('kpiPayCount').innerHTML =
+      `<span>${k.successfulChargeCount} kept · ${k.fullyRefundedCount} fully refunded MTD</span>`;
+    document.getElementById('kpiPayStripe').textContent = fmt$(k.stripeReceivedMTD);
+    document.getElementById('kpiPayStripeCount').innerHTML =
+      `<span>${k.stripeChargeCount} active Stripe charge${k.stripeChargeCount !== 1 ? 's' : ''} MTD</span>`;
+    document.getElementById('kpiPayCompleted').textContent = String(k.successfulChargeCount);
+    const refundBits = [];
+    if (k.fullyRefundedCount) refundBits.push(`${k.fullyRefundedCount} fully refunded`);
+    if (k.partialRefundedCount) refundBits.push(`${k.partialRefundedCount} partial`);
+    document.getElementById('kpiPayCompletedCount').innerHTML = refundBits.length
+      ? `<span>${refundBits.join(' · ')} this month</span>`
+      : `<span>${k.mtdPaymentCount} charge${k.mtdPaymentCount !== 1 ? 's' : ''} this month · none refunded</span>`;
+    document.getElementById('kpiPayAvg').textContent = fmt$(k.avgPayment);
+    document.getElementById('kpiPayAvgCount').innerHTML =
+      `<span>avg of ${k.successfulChargeCount} successful charge${k.successfulChargeCount !== 1 ? 's' : ''}</span>`;
+  }
+
+  function openRefundModal(paymentId) {
+    if (!ARS.can('payments.refund')) return showToast('Permission denied — admin only', 'error');
+    const p = ARS.Data.getPayment(paymentId);
+    if (!p?.canRefund) return showToast('This payment cannot be refunded', 'error');
+    document.getElementById('refundPayId').value = p.id;
+    document.getElementById('refundPayLabel').value = `${p.id} · ${p.customerName} · Invoice ${p.invoiceId}`;
+    document.getElementById('refundableLabel').value = ARS.fmtMoney(p.refundable);
+    document.getElementById('refundAmount').value = p.refundable.toFixed(2);
+    document.getElementById('refundNotes').value = '';
+    openModal('refundPayModal');
+  }
+
+  window.openRefundModal = openRefundModal;
+
+  function setActiveFilter(filter) {
+    activeFilter = filter;
+    document.querySelectorAll('#payFilterTabs .filter-tab').forEach((b) => {
+      b.classList.toggle('active', b.dataset.filter === filter);
+    });
+  }
+
+  function updateRefundedTabBadge() {
+    const count = ARS.Data.listPayments().filter((p) => p.isRefunded).length;
+    const badge = document.getElementById('refundedTabBadge');
+    if (!badge) return;
+    if (count > 0) {
+      badge.hidden = false;
+      badge.textContent = String(count);
+    } else {
+      badge.hidden = true;
+    }
   }
 
   function renderTable() {
     renderKpis();
+    updateRefundedTabBadge();
     let data = ARS.Data.listPayments({ q: searchVal });
-    if (activeFilter !== 'all') data = data.filter(p => p.method === activeFilter);
+    if (activeFilter === 'Stripe') data = data.filter(p => /stripe/i.test(p.method || '') && ARS.Data.paymentNetAmount(p) > 0.01);
+    else if (activeFilter === 'Refunded') data = data.filter(p => p.isRefunded);
+    else if (activeFilter !== 'all') data = data.filter(p => p.method === activeFilter);
+    const canRefund = ARS.can('payments.refund');
     document.getElementById('payCount').textContent = `${data.length} payment${data.length !== 1 ? 's' : ''}`;
     document.getElementById('payTable').innerHTML = data.length ? data.map(p => `
-      <tr>
+      <tr class="${p.isRefunded ? 'row--refunded' : ''}" data-row-id="${p.id}">
         <td class="td-mono td-bold">${p.id}</td>
         <td class="td-muted">${p.date}</td>
-        <td class="td-primary">${p.customerName}</td>
-        <td class="td-mono td-muted">${p.invoiceId}</td>
-        <td style="text-align:right;font-weight:700;color:#059669">${p.amountDisplay}</td>
+        <td class="td-primary">${ARS.Pages.entityLink(p.customerName, p.customerId ? `/app/customer-detail.html?id=${p.customerId}` : '')}</td>
+        <td class="td-mono td-muted"><a href="/app/invoice-detail.html?id=${p.invoiceId}" style="color:inherit">${p.invoiceId}</a></td>
+        <td style="text-align:right;font-weight:700;color:${p.isRefunded ? 'var(--steel)' : '#059669'}">
+          ${p.netDisplay}${p.refundedAmount ? `<div style="font-size:.72rem;font-weight:600;color:var(--red)">gross ${p.amountDisplay} · −${p.refundedDisplay}</div>` : ''}
+        </td>
         <td><span style="display:inline-flex;align-items:center;gap:6px;font-size:.8rem;font-weight:600"><i class="fas ${METHOD_ICON[p.method] || 'fa-dollar-sign'}" style="color:var(--warm-gray)"></i>${p.method}</span></td>
-        <td>${chip(p.status)}</td>
-        <td class="td-actions">
+        <td>${chip(p.statusLabel || p.status)}</td>
+        <td class="td-actions" style="white-space:nowrap">
           <button class="btn btn--ghost btn--sm btn--icon" onclick="ARS.Documents.printReceipt('${p.id}')" title="Print receipt"><i class="fas fa-receipt"></i></button>
+          ${canRefund && p.canRefund ? `<button class="btn btn--ghost btn--sm" onclick="openRefundModal('${p.id}')" title="Refund"><i class="fas fa-undo"></i> Refund</button>` : ''}
         </td>
       </tr>
-    `).join('') : `<tr><td colspan="8"><div class="empty-state"><div class="empty-state__icon"><i class="fas fa-credit-card"></i></div><div class="empty-state__title">No payments found</div></div></td></tr>`;
+    `).join('') : ARS.Pages.tablePlaceholder(8, activeFilter === 'Refunded' ? 'No refunded payments yet' : 'No payments found', 'fa-credit-card');
   }
 
   ARS.Pages.waitReady(() => {
+    urlState = ARS.Pages.applyListQuery({ tabsId: 'payFilterTabs', searchId: 'paySearch' });
+    activeFilter = urlState.filter;
+    searchVal = urlState.q || '';
     populateInvoiceSelect();
+    ARS.Pages.openModalIfRequested('recordPayModal');
 
     document.getElementById('payInvoice')?.addEventListener('change', (e) => {
       const opt = e.target.selectedOptions[0];
@@ -178,17 +256,17 @@
     });
 
     renderTable();
-    document.getElementById('payFilterTabs').addEventListener('click', e => {
-      const btn = e.target.closest('.filter-tab'); if (!btn) return;
-      document.querySelectorAll('#payFilterTabs .filter-tab').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active'); activeFilter = btn.dataset.filter; renderTable();
+    ARS.Pages.bindKpiFilter('kpiPayStripe', '/app/payments.html?status=Stripe');
+    ARS.Pages.bindFilters('payFilterTabs', 'paySearch', 'payCount', ({ filter, q }) => {
+      if (filter !== undefined) activeFilter = filter;
+      if (q !== undefined) searchVal = q;
+      renderTable();
     });
-    document.getElementById('paySearch').addEventListener('input', e => { searchVal = e.target.value; renderTable(); });
     document.addEventListener('ars:data-changed', () => { populateInvoiceSelect(); renderTable(); });
 
     document.getElementById('payExportBtn')?.addEventListener('click', () => {
-      const rows = ARS.Data.listPayments().map(p => [p.id, p.date, p.customerName, p.invoiceId, p.amount, p.method, p.status]);
-      ARS.exportCSV('payments.csv', ['Payment','Date','Customer','Invoice','Amount','Method','Status'], rows);
+      const rows = ARS.Data.listPayments().map(p => [p.id, p.date, p.customerName, p.invoiceId, p.amount, p.refundedAmount || 0, p.method, p.status]);
+      ARS.exportCSV('payments.csv', ['Payment','Date','Customer','Invoice','Amount','Refunded','Method','Status'], rows);
       showToast('Payments exported', 'success');
     });
 
@@ -202,6 +280,37 @@
         await ARS.Payments.startCheckout(invoiceId, amount);
       } catch (e) {
         showToast(e.message, 'error');
+        btn.disabled = false;
+      }
+    });
+
+    document.getElementById('confirmRefundBtn')?.addEventListener('click', async () => {
+      const paymentId = document.getElementById('refundPayId').value;
+      const amount = Number(document.getElementById('refundAmount').value);
+      const reasonCode = document.getElementById('refundReason').value;
+      const notes = document.getElementById('refundNotes').value.trim();
+      if (!paymentId || !amount) return showToast('Refund amount required', 'error');
+      if (!confirm(`Issue a ${ARS.fmtMoney(amount)} Stripe refund? This cannot be undone from the app.`)) return;
+      const btn = document.getElementById('confirmRefundBtn');
+      btn.disabled = true;
+      try {
+        const result = await ARS.Payments.refundPayment(paymentId, {
+          amount,
+          reason: notes || reasonCode,
+        });
+        closeModal('refundPayModal');
+        const updated = ARS.Data.getPayment(paymentId);
+        const label = updated?.statusLabel || result?.status || 'Refund Complete';
+        if (result?.alreadyRefunded) {
+          showToast('Refund already complete — status refreshed', 'success');
+        } else {
+          showToast(`${label} — ${ARS.fmtMoney(result.amount || amount)}`, 'success');
+        }
+        setActiveFilter('Refunded');
+        renderTable();
+      } catch (e) {
+        showToast(e.message || e.code || 'Refund failed', 'error');
+      } finally {
         btn.disabled = false;
       }
     });

@@ -209,6 +209,66 @@ ARS.Demo = {
       { id: 'lead_005', name: 'Howard Greene', company: 'Greene Waste Services', email: 'hgreene@greenewaste.demo', phone: '(732) 555-0205', service: 'Other', truck: 'Roll-off fleet', location: 'Woodbridge, NJ', message: 'Hydraulic cylinder leak on roll-off truck.', timestamp: iso(6), source: 'website-contact-form', createdAt: iso(6) },
     ];
 
+    const normalSchedule = () => ({
+      mon: '7:00 AM – 3:30 PM', tue: '7:00 AM – 3:30 PM', wed: '7:00 AM – 3:30 PM',
+      thu: '7:00 AM – 3:30 PM', fri: '7:00 AM – 3:30 PM', sat: 'Off', sun: 'Off', notes: '',
+    });
+    const fullOnboarding = (doneAt) => [
+      { id: 'account', label: 'Platform account created', done: true, doneAt },
+      { id: 'i9', label: 'I-9 employment eligibility', done: true, doneAt },
+      { id: 'w4', label: 'W-4 tax withholding', done: true, doneAt },
+      { id: 'handbook', label: 'Employee handbook acknowledged', done: true, doneAt },
+      { id: 'safety', label: 'Shop safety orientation', done: true, doneAt },
+      { id: 'tools', label: 'Tools / PPE issued', done: true, doneAt },
+      { id: 'access', label: 'Shop keys / access', done: true, doneAt },
+      { id: 'training', label: 'Role training complete', done: true, doneAt },
+    ];
+    const partialOnboarding = (doneAt) => [
+      { id: 'account', label: 'Platform account created', done: true, doneAt },
+      { id: 'i9', label: 'I-9 employment eligibility', done: true, doneAt },
+      { id: 'w4', label: 'W-4 tax withholding', done: true, doneAt },
+      { id: 'handbook', label: 'Employee handbook acknowledged', done: false },
+      { id: 'safety', label: 'Shop safety orientation', done: false },
+      { id: 'tools', label: 'Tools / PPE issued', done: false },
+      { id: 'access', label: 'Shop keys / access', done: false },
+      { id: 'training', label: 'Role training complete', done: false },
+    ];
+
+    const employees = [
+      {
+        uid: 'demo-alex', id: 'demo-alex', name: 'Alex Rodriguez', email: 'admin@alexroadservice.demo',
+        phone: '(732) 555-0011', role: 'admin', jobTitle: 'Owner / Shop Manager', hireDate: fmt(900),
+        department: 'Management', status: 'Active', employmentType: 'Full-time',
+        emergencyContact: { name: 'Elena Rodriguez', phone: '(732) 555-0012' }, address: 'Keasbey, NJ',
+        certifications: ['ASE Master Technician'], schedule: normalSchedule(),
+        onboarding: fullOnboarding(iso(900)), media: [], active: true, createdAt: iso(900), updatedAt: iso(900),
+      },
+      {
+        uid: 'demo-sarah', id: 'demo-sarah', name: 'Sarah Torres', email: 'office@alexroadservice.demo',
+        phone: '(732) 555-0021', role: 'office', jobTitle: 'Office Manager', hireDate: fmt(620),
+        department: 'Office', status: 'Active', employmentType: 'Full-time',
+        emergencyContact: { name: 'Marco Torres', phone: '(732) 555-0022' }, address: 'Woodbridge, NJ',
+        certifications: [], schedule: { ...normalSchedule(), sat: '8:00 AM – 12:00 PM' },
+        onboarding: fullOnboarding(iso(620)), media: [], active: true, createdAt: iso(620), updatedAt: iso(620),
+      },
+      {
+        uid: 'demo-mike', id: 'demo-mike', name: 'Mike Santos', email: 'tech@alexroadservice.demo',
+        phone: '(732) 555-0031', role: 'technician', jobTitle: 'Lead Technician', hireDate: fmt(500),
+        department: 'Service', status: 'Active', employmentType: 'Full-time',
+        emergencyContact: { name: 'Rosa Santos', phone: '(732) 555-0032' }, address: 'Perth Amboy, NJ',
+        certifications: ['ASE Brakes', 'DOT Inspector'], schedule: normalSchedule(),
+        onboarding: fullOnboarding(iso(500)), media: [], active: true, createdAt: iso(500), updatedAt: iso(500),
+      },
+      {
+        uid: 'demo-jordan', id: 'demo-jordan', name: 'Jordan Blake', email: 'jordan@alexroadservice.demo',
+        phone: '(732) 555-0041', role: 'technician', jobTitle: 'Technician', hireDate: fmt(21),
+        department: 'Service', status: 'Active', employmentType: 'Full-time',
+        emergencyContact: { name: '', phone: '' }, address: '',
+        certifications: [], schedule: { ...normalSchedule(), fri: 'Off', sat: '8:00 AM – 4:00 PM' },
+        onboarding: partialOnboarding(iso(21)), media: [], active: true, createdAt: iso(21), updatedAt: iso(21),
+      },
+    ];
+
     const auditLog = [
       { id: 'audit_001', action: 'demo.seed', entityType: 'system', at: iso(0), by: this.EMAIL },
       { id: 'audit_002', action: 'workOrder.create', entityId: woId(1), entityType: 'workOrder', at: iso(1), by: this.EMAIL },
@@ -229,7 +289,9 @@ ARS.Demo = {
       inventory,
       inventoryTransactions,
       notifications: [],
+      notificationReads: {},
       contactSubmissions,
+      employees,
       auditLog,
       settings: {
         laborRate: 95,

@@ -27,7 +27,8 @@ ARS.Documents = {
 
   shopHeader() {
     const s = ARS.Store.getSettings();
-    return `<h1>${s.shopName || 'Alex Road Service'}</h1>
+    return `${s.shopLogoUrl ? `<img src="${s.shopLogoUrl}" style="max-height:56px;margin-bottom:8px">` : ''}
+      <h1>${s.shopName || 'Alex Road Service'}</h1>
       <div class="sub">${s.shopAddress || ''}<br>${s.shopPhone || ''} · ${s.shopEmail || ''}</div>`;
   },
 
@@ -37,15 +38,24 @@ ARS.Documents = {
     const wo = inv.workOrderId ? ARS.Data.getWorkOrder(inv.workOrderId) : null;
     const s = ARS.Store.getSettings();
     const tax = wo?.tax || 0;
+    const lineItems = wo?.lineItems || [];
+    const partsRows = lineItems.length
+      ? lineItems.map((line) => {
+          const lineTotal = (Number(line.unitPrice) || 0) * (Number(line.qty) || 0);
+          return `<tr><td>${line.desc || 'Part'}${line.qty ? ` × ${line.qty}` : ''}</td><td class="right">${ARS.fmtMoney(lineTotal)}</td></tr>`;
+        }).join('')
+      : (wo ? `<tr><td>Parts</td><td class="right">${ARS.fmtMoney(wo.parts)}</td></tr>` : '');
     const html = `${this.shopHeader()}
       <h2 style="margin-top:20px">INVOICE ${inv.id}</h2>
       <div class="sub">Date: ${inv.date} · Due: ${inv.due} · Status: ${inv.status}</div>
       <p><strong>Bill To:</strong> ${inv.customerName}</p>
-      ${wo ? `<p><strong>Work Order:</strong> ${wo.id}<br><strong>Description:</strong> ${wo.desc}</p>` : ''}
+      ${wo ? `<p><strong>Work Order:</strong> ${wo.id}${wo.serviceType ? ` · ${wo.serviceType}` : ''}<br>
+        ${wo.truckLabel ? `<strong>Truck:</strong> ${wo.truckLabel}<br>` : ''}
+        <strong>Job performed:</strong> ${wo.desc}</p>` : ''}
       <table>
         <tr><th>Description</th><th class="right">Amount</th></tr>
-        ${wo ? `<tr><td>Labor</td><td class="right">${ARS.fmtMoney(wo.labor)}</td></tr>
-               <tr><td>Parts</td><td class="right">${ARS.fmtMoney(wo.parts)}</td></tr>` : ''}
+        ${wo ? `<tr><td>Labor / repair${ARS.Data.formatWoTechs(wo, '') ? ` (${ARS.Data.formatWoTechs(wo, '')})` : ''}</td><td class="right">${ARS.fmtMoney(wo.labor)}</td></tr>` : ''}
+        ${partsRows}
         ${tax ? `<tr><td>Tax (${((s.taxRate || 0) * 100).toFixed(3)}%)</td><td class="right">${ARS.fmtMoney(tax)}</td></tr>` : ''}
         <tr><td><strong>Total</strong></td><td class="right"><strong>${ARS.fmtMoney(inv.total)}</strong></td></tr>
         <tr><td>Amount Paid</td><td class="right">${ARS.fmtMoney(inv.amountPaid || 0)}</td></tr>
@@ -94,7 +104,7 @@ ARS.Documents = {
     if (!wo) return showToast('Work order not found', 'error');
     const html = `${this.shopHeader()}
       <h2 style="margin-top:20px">WORK ORDER ${wo.id}</h2>
-      <div class="sub">${wo.date} · ${wo.status} · Tech: ${wo.tech || 'Unassigned'}</div>
+      <div class="sub">${wo.date} · ${wo.status} · Tech: ${ARS.Data.formatWoTechs(wo, 'Unassigned')}</div>
       <p><strong>Customer:</strong> ${wo.customerName}<br><strong>Truck:</strong> ${wo.truckLabel || '—'}</p>
       <p><strong>Service:</strong> ${wo.serviceType || '—'}<br>${wo.desc}</p>
       <table>

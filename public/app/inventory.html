@@ -6,7 +6,7 @@
   <link rel="icon" href="/favicon.ico" sizes="any">
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <title>Inventory | Alex Road Service Ops</title>
-  <link rel="stylesheet" href="/app/css/app.css">
+  <link rel="stylesheet" href="/app/css/app.css?v=20260720w">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
 </head>
 <body class="app-body">
@@ -94,7 +94,7 @@
             <th>Status</th><th>Actions</th>
           </tr>
         </thead>
-        <tbody id="invTable"></tbody>
+        <tbody id="invTable"><tr><td colspan="9"><div class="loading-state"><div class="loading-state__spinner"></div><div class="loading-state__text">Loading…</div></div></td></tr></tbody>
       </table>
     </div>
 
@@ -143,15 +143,72 @@
   </div>
 </div>
 
-<script src="/app/js/utils.js"></script>
-<script src="/app/js/demo-mode.js"></script>
-<script src="/app/js/data-store.js"></script>
-<script src="/app/js/auth.js"></script>
-<script src="/app/js/data-service.js"></script>
-<script src="/app/js/page-scripts.js"></script>
-<script src="/app/js/app-components.js"></script>
+<!-- Part Media Modal -->
+<div class="modal-overlay" id="partMediaModal">
+  <div class="modal" style="max-width:640px">
+    <div class="modal__header">
+      <div class="modal__title" id="partMediaTitle">Part Photos</div>
+      <button class="modal__close" data-close-modal><i class="fas fa-times"></i></button>
+    </div>
+    <div class="modal__body">
+      <div id="partMediaMount"></div>
+    </div>
+    <div class="modal__footer">
+      <button class="btn btn--secondary" data-close-modal>Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Adjust Stock Modal -->
+<div class="modal-overlay" id="adjustStockModal">
+  <div class="modal" style="max-width:440px">
+    <div class="modal__header">
+      <div class="modal__title">Adjust Stock</div>
+      <button class="modal__close" data-close-modal><i class="fas fa-times"></i></button>
+    </div>
+    <div class="modal__body">
+      <input type="hidden" id="adjPartId">
+      <p id="adjPartLabel" style="margin:0 0 12px;color:var(--steel);font-size:.88rem"></p>
+      <div class="form-row">
+        <label class="form-label">Adjustment (+/- qty)</label>
+        <input class="form-input" id="adjQty" type="text" placeholder="e.g. +5 or -3">
+      </div>
+      <div class="form-row">
+        <label class="form-label">Note</label>
+        <textarea class="form-textarea" id="adjNote" rows="2" placeholder="Reason for adjustment">manual adjustment</textarea>
+      </div>
+    </div>
+    <div class="modal__footer">
+      <button class="btn btn--secondary" data-close-modal>Cancel</button>
+      <button class="btn btn--primary" id="saveAdjStockBtn">Save</button>
+    </div>
+  </div>
+</div>
+
+<script src="/app/js/utils.js?v=20260720w"></script>
+<script src="/app/js/demo-mode.js?v=20260720w"></script>
+<script src="/app/js/data-store.js?v=20260720w"></script>
+<script src="/app/js/auth.js?v=20260720w"></script>
+<script src="/app/js/data-service.js?v=20260720w"></script>
+<script src="/app/js/page-scripts.js?v=20260720w"></script>
+<script src="/app/js/app-components.js?v=20260720w"></script>
 <script>
-  let activeFilter = 'all', searchVal = '', catVal = '';
+  let activeFilter = 'all', searchVal = '', catVal = '', urlState = {};
+
+  function inventoryStatusFilter(status) {
+    if (activeFilter === 'all') return true;
+    if (activeFilter === 'attention') {
+      return ARS.Pages.matchesStatusFilter(status, 'attention', 'inventory');
+    }
+    const normalized = activeFilter === 'Low Stock' ? 'Low' : activeFilter;
+    return status === normalized;
+  }
+
+  function getFilteredInventory() {
+    const filters = { q: searchVal };
+    if (catVal) filters.cat = catVal;
+    return ARS.Data.listInventory(filters).filter((p) => inventoryStatusFilter(p.status));
+  }
 
   function rowBg(status) {
     if (status === 'Out of Stock') return 'background:rgba(229,31,43,.03)';
@@ -164,13 +221,13 @@
     const el = document.getElementById('oosBanner');
     if (!el) return;
     el.innerHTML = oos.length ? oos.map(p => `
-      <div class="alert-item alert-item--red" style="margin-bottom:14px">
+      <a href="${ARS.Pages.appHref(`/app/inventory.html?status=Out%20of%20Stock&highlight=${encodeURIComponent(p.id)}`)}" class="alert-item alert-item--red" style="margin-bottom:14px;display:flex;text-decoration:none;color:inherit">
         <i class="fas fa-exclamation-circle alert-item__icon"></i>
         <div>
           <div class="alert-item__title">${p.desc} (${p.id}) is completely out of stock</div>
-          <div class="alert-item__desc">Qty: ${p.qty} · Minimum: ${p.min} — Reorder immediately to avoid job delays</div>
+          <div class="alert-item__desc">Qty: ${p.qty} · Minimum: ${p.min} — Click to filter &amp; highlight this part</div>
         </div>
-      </div>
+      </a>
     `).join('') : '';
   }
 
@@ -182,16 +239,13 @@
   }
 
   function renderTable() {
-    const filters = { q: searchVal };
-    if (activeFilter !== 'all') filters.status = activeFilter;
-    if (catVal) filters.cat = catVal;
-    const data = ARS.Data.listInventory(filters);
+    const data = getFilteredInventory();
     const all = ARS.Data.listInventory();
     renderKpis(all);
     renderBanner();
     document.getElementById('invCount').textContent = `${data.length} item${data.length !== 1 ? 's' : ''}`;
     document.getElementById('invTable').innerHTML = data.length ? data.map(p => `
-      <tr style="${rowBg(p.status)}">
+      <tr data-row-id="${p.id}" style="${rowBg(p.status)}">
         <td class="td-mono td-bold" style="white-space:nowrap">${p.partNo}</td>
         <td class="td-primary">${p.desc}</td>
         <td><span style="font-size:.76rem;font-weight:600;color:var(--steel)">${p.cat}</span></td>
@@ -202,29 +256,47 @@
         <td>${chip(p.status)}</td>
         <td class="td-actions">
           <button class="btn btn--ghost btn--sm btn--icon" title="Adjust Stock" onclick="adjustStock('${p.id}')"><i class="fas fa-plus-minus"></i></button>
+          <button class="btn btn--ghost btn--sm btn--icon" title="Photos" onclick="openPartMedia('${p.id}')"><i class="fas fa-camera"></i></button>
         </td>
       </tr>
-    `).join('') : `<tr><td colspan="9"><div class="empty-state"><div class="empty-state__icon"><i class="fas fa-boxes"></i></div><div class="empty-state__title">No items found</div></div></td></tr>`;
+    `).join('') : ARS.Pages.tablePlaceholder(9, 'No items found', 'fa-boxes');
   }
+
+  window.openPartMedia = (partId) => {
+    const part = ARS.Data.listInventory().find(p => p.id === partId);
+    document.getElementById('partMediaTitle').textContent = part ? `${part.desc} — Photos` : 'Part Photos';
+    openModal('partMediaModal');
+    ARS.MediaUI.mount(document.getElementById('partMediaMount'), {
+      entityType: 'inventory',
+      entityId: partId,
+      title: 'Part photos',
+      getEntity: () => ARS.Data.listInventory().find(p => p.id === partId),
+      onChanged: () => renderTable(),
+    });
+  };
 
   window.adjustStock = (partId) => {
     if (!ARS.can('inventory.edit')) return showToast('Permission denied', 'error');
     const part = ARS.Data.listInventory().find(p => p.id === partId);
-    const input = prompt(`Adjust stock for ${part?.desc || partId}\nEnter +1, -1, or any number (e.g. +5, -3):`);
-    if (input === null || input.trim() === '') return;
-    const delta = Number(input.replace(/^\+/, ''));
-    if (isNaN(delta)) return showToast('Invalid adjustment amount', 'error');
-    try {
-      ARS.Data.adjustStock(partId, delta, 'manual adjustment');
-      renderTable();
-      showToast(`Stock adjusted for ${part?.desc || partId}`, 'success');
-    } catch (e) {
-      showToast(e.message, 'error');
-    }
+    document.getElementById('adjPartId').value = partId;
+    document.getElementById('adjPartLabel').textContent =
+      `${part?.desc || partId} — current qty ${part?.qty ?? 0}`;
+    document.getElementById('adjQty').value = '';
+    document.getElementById('adjNote').value = 'manual adjustment';
+    openModal('adjustStockModal');
+    setTimeout(() => document.getElementById('adjQty')?.focus(), 50);
   };
 
   ARS.Pages.waitReady(() => {
+    urlState = ARS.Pages.applyListQuery({ tabsId: 'invFilterTabs', searchId: 'invSearch' });
+    activeFilter = urlState.filter;
+    searchVal = urlState.q || '';
+    ARS.Pages.openModalIfRequested('addPartModal');
     renderTable();
+    ARS.Pages.bindKpiFilter('kpiSkuInStock', '/app/inventory.html?status=In Stock');
+    ARS.Pages.bindKpiFilter('kpiSkuLow', '/app/inventory.html?status=Low');
+    ARS.Pages.bindKpiFilter('kpiSkuOut', '/app/inventory.html?status=Out of Stock');
+    ARS.Pages.bindKpiFilter('kpiSkuTotal', '/app/inventory.html');
     document.getElementById('invFilterTabs').addEventListener('click', e => {
       const btn = e.target.closest('.filter-tab'); if (!btn) return;
       document.querySelectorAll('#invFilterTabs .filter-tab').forEach(b => b.classList.remove('active'));
@@ -246,8 +318,9 @@
       const partNo = document.getElementById('partNo').value.trim();
       const desc = document.getElementById('partDesc').value.trim();
       if (!partNo || !desc) return showToast('Part number and description required', 'error');
+      let part;
       try {
-        await ARS.Data.createPart({
+        part = await ARS.Data.createPart({
           partNo,
           desc,
           cat: document.getElementById('partCat').value,
@@ -255,6 +328,7 @@
           min: document.getElementById('partMin').value,
           cost: document.getElementById('partCost').value,
           price: document.getElementById('partPrice').value,
+          supplier: document.getElementById('partSupplier')?.value.trim() || '',
         });
       } catch (e) {
         return showToast(e.message, 'error');
@@ -265,7 +339,29 @@
         if (el) el.value = '';
       });
       renderTable();
-      showToast('Part added to inventory!', 'success');
+      ARS.Pages.successWithView({
+        title: 'Part added',
+        message: `${part.desc} (${part.partNo}) added to inventory.`,
+        href: `/app/inventory.html?highlight=${part.id}`,
+      });
+    });
+
+    document.getElementById('saveAdjStockBtn')?.addEventListener('click', async () => {
+      if (!ARS.can('inventory.edit')) return showToast('Permission denied', 'error');
+      const partId = document.getElementById('adjPartId').value;
+      const qtyStr = document.getElementById('adjQty').value.trim();
+      if (!qtyStr) return showToast('Enter an adjustment amount', 'error');
+      const delta = Number(qtyStr.replace(/^\+/, ''));
+      if (isNaN(delta)) return showToast('Invalid adjustment amount', 'error');
+      const note = document.getElementById('adjNote').value.trim() || 'manual adjustment';
+      try {
+        await ARS.Data.adjustStock(partId, delta, note);
+        closeModal('adjustStockModal');
+        renderTable();
+        showToast('Stock adjusted', 'success');
+      } catch (e) {
+        showToast(e.message, 'error');
+      }
     });
   });
 </script>

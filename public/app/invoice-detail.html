@@ -6,41 +6,105 @@
   <link rel="icon" href="/favicon.ico" sizes="any">
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <title>Invoice Detail | Alex Road Service Ops</title>
-  <link rel="stylesheet" href="/app/css/app.css">
+  <link rel="stylesheet" href="/app/css/app.css?v=20260720w">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
 </head>
 <body class="app-body">
 <div id="sidebar-placeholder"></div>
 <main class="app-main">
   <div id="topbar-placeholder" data-title="Invoice"></div>
-  <div class="app-content" id="detailRoot">Loading…</div>
+  <div class="app-content" id="detailRoot"><div class="loading-state"><div class="loading-state__spinner"></div><div class="loading-state__text">Loading invoice…</div></div></div>
 </main>
-<script src="/app/js/utils.js"></script>
-<script src="/app/js/demo-mode.js"></script>
-<script src="/app/js/data-store.js"></script>
-<script src="/app/js/auth.js"></script>
-<script src="/app/js/data-service.js"></script>
-<script src="/app/js/documents.js"></script>
-<script src="/app/js/page-scripts.js"></script>
-<script src="/app/js/app-components.js"></script>
+
+<div class="modal-overlay" id="invPayModal">
+  <div class="modal" style="max-width:420px">
+    <div class="modal__header">
+      <div class="modal__title">Pay with Stripe</div>
+      <button class="modal__close" data-close-modal><i class="fas fa-times"></i></button>
+    </div>
+    <div class="modal__body">
+      <div class="form-row"><label class="form-label">Invoice</label><input class="form-input" id="invPayLabel" readonly></div>
+      <div class="form-row"><label class="form-label">Balance due</label><input class="form-input" id="invPayBalance" readonly></div>
+      <div class="form-row"><label class="form-label">Payment amount ($) *</label><input class="form-input" id="invPayAmount" type="number" min="0.01" step="0.01"></div>
+    </div>
+    <div class="modal__footer">
+      <button class="btn btn--secondary" data-close-modal>Cancel</button>
+      <button class="btn btn--primary" id="invPayConfirm"><i class="fab fa-stripe"></i> Continue to Stripe</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="invRefundModal">
+  <div class="modal" style="max-width:440px">
+    <div class="modal__header">
+      <div class="modal__title">Refund Stripe Payment</div>
+      <button class="modal__close" data-close-modal><i class="fas fa-times"></i></button>
+    </div>
+    <div class="modal__body">
+      <input type="hidden" id="invRefundPayId">
+      <div class="form-row"><label class="form-label">Payment</label><input class="form-input" id="invRefundPayLabel" readonly></div>
+      <div class="form-row"><label class="form-label">Refundable balance</label><input class="form-input" id="invRefundableLabel" readonly></div>
+      <div class="form-row"><label class="form-label">Refund amount ($) *</label><input class="form-input" id="invRefundAmount" type="number" min="0.01" step="0.01"></div>
+      <div class="form-row">
+        <label class="form-label">Reason</label>
+        <select class="form-select" id="invRefundReason">
+          <option value="requested_by_customer">Requested by customer</option>
+          <option value="duplicate">Duplicate charge</option>
+          <option value="fraudulent">Fraudulent</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal__footer">
+      <button class="btn btn--secondary" data-close-modal>Cancel</button>
+      <button class="btn btn--primary" id="invRefundConfirm"><i class="fas fa-undo"></i> Issue Refund</button>
+    </div>
+  </div>
+</div>
+
+<script src="/app/js/utils.js?v=20260720w"></script>
+<script src="/app/js/demo-mode.js?v=20260720w"></script>
+<script src="/app/js/data-store.js?v=20260720w"></script>
+<script src="/app/js/auth.js?v=20260720w"></script>
+<script src="/app/js/data-service.js?v=20260720w"></script>
+<script src="/app/js/documents.js?v=20260720w"></script>
+<script src="/app/js/page-scripts.js?v=20260720w"></script>
+<script src="/app/js/app-components.js?v=20260720w"></script>
 <script>
   function render() {
     const id = new URLSearchParams(location.search).get('id');
     const inv = ARS.Data.getInvoice(id);
     if (!inv) {
-      document.getElementById('detailRoot').innerHTML = '<div class="empty-state"><div class="empty-state__title">Invoice not found</div></div>';
+      const root = document.getElementById('detailRoot');
+      root.innerHTML = ARS.Pages.isDataReady()
+        ? '<div class="empty-state"><div class="empty-state__title">Invoice not found</div><a href="/app/invoices.html" class="btn btn--secondary" style="margin-top:12px">Back to invoices</a></div>'
+        : '<div class="loading-state"><div class="loading-state__spinner"></div><div class="loading-state__text">Loading invoice…</div></div>';
       return;
     }
     const wo = inv.workOrderId ? ARS.Data.getWorkOrder(inv.workOrderId) : null;
     const payments = ARS.Data.listPayments().filter(p => p.invoiceId === id);
+    const custHref = inv.customerId ? `/app/customer-detail.html?id=${inv.customerId}` : '';
     const canPay = ARS.can('payments.record') && !['Paid', 'Written Off'].includes(inv.status);
     const canWriteOff = ARS.can('invoices.writeOff') && inv.status === 'Overdue';
+    const canRefund = ARS.can('payments.refund');
+    const lineItems = wo?.lineItems || [];
+    const partsRows = lineItems.length
+      ? lineItems.map((line) => {
+          const lineTotal = (Number(line.unitPrice) || 0) * (Number(line.qty) || 0);
+          return `<tr>
+            <td class="td-primary">${line.desc || 'Part'}</td>
+            <td class="td-muted td-mono">${line.partId || '—'}</td>
+            <td style="text-align:right">${line.qty || 0}</td>
+            <td style="text-align:right">${fmt$(line.unitPrice || 0)}</td>
+            <td style="text-align:right;font-weight:600">${fmt$(lineTotal)}</td>
+          </tr>`;
+        }).join('')
+      : (wo ? `<tr><td colspan="5" class="td-muted">Parts total (no itemized list)</td></tr>` : '');
     document.getElementById('detailRoot').innerHTML = `
       <div class="page-header">
         <div>
           <a href="/app/invoices.html" style="font-size:.8rem;color:var(--steel)"><i class="fas fa-arrow-left"></i> Invoices</a>
           <div class="page-header__title" style="margin-top:8px">${inv.id}</div>
-          <div class="page-header__sub">${inv.customerName} · ${chip(inv.status)}</div>
+          <div class="page-header__sub">${ARS.Pages.entityLink(inv.customerName, custHref)} · ${chip(inv.status)}</div>
         </div>
         <div class="page-header__actions" style="display:flex;gap:8px;flex-wrap:wrap">
           <button class="btn btn--secondary" id="printBtn"><i class="fas fa-print"></i> Print</button>
@@ -52,47 +116,145 @@
         <div class="app-card">
           <div class="app-card__body" style="font-size:.88rem;display:grid;gap:10px">
             <div><span style="color:var(--steel)">Invoice Date:</span> <strong>${inv.date}</strong></div>
+            <div><span style="color:var(--steel)">Customer:</span> ${ARS.Pages.entityLink(inv.customerName, custHref)}</div>
             <div><span style="color:var(--steel)">Due Date:</span> <strong>${inv.due}</strong></div>
-            <div><span style="color:var(--steel)">Work Order:</span> ${wo ? `<a href="/app/work-order-detail.html?id=${wo.id}">${wo.id}</a>` : '—'}</div>
-            ${wo ? `<div><span style="color:var(--steel)">Description:</span> ${wo.desc}</div>` : ''}
+            <div><span style="color:var(--steel)">Work Order:</span> ${wo ? `<a href="${ARS.Pages.appHref(`/app/work-order-detail.html?id=${wo.id}`)}">${wo.id}</a>` : '—'}</div>
+            ${wo?.serviceType ? `<div><span style="color:var(--steel)">Service:</span> <strong>${wo.serviceType}</strong></div>` : ''}
+            ${wo?.truckLabel ? `<div><span style="color:var(--steel)">Truck:</span> ${wo.truckId ? ARS.Pages.entityLink(wo.truckLabel, `/app/truck-detail.html?id=${wo.truckId}`) : wo.truckLabel}</div>` : ''}
+            ${wo && ARS.Data.formatWoTechs(wo, '') ? `<div><span style="color:var(--steel)">Technician:</span> ${ARS.Data.formatWoTechs(wo)}</div>` : ''}
+            ${wo ? `<div><span style="color:var(--steel)">Job performed:</span> ${wo.desc}</div>` : ''}
           </div>
         </div>
         <div class="app-card">
           <div class="app-card__body" style="display:flex;flex-direction:column;gap:8px">
-            <div style="display:flex;justify-content:space-between"><span>Total</span><strong>${fmt$(inv.total)}</strong></div>
+            ${wo ? `<div style="display:flex;justify-content:space-between"><span>Labor / repair</span><strong>${fmt$(wo.labor || 0)}</strong></div>
+            <div style="display:flex;justify-content:space-between"><span>Parts</span><strong>${fmt$(wo.parts || 0)}</strong></div>
+            ${(wo.tax || 0) ? `<div style="display:flex;justify-content:space-between"><span>Tax</span><strong>${fmt$(wo.tax)}</strong></div>` : ''}` : ''}
+            <div style="display:flex;justify-content:space-between;border-top:1px solid var(--border);padding-top:8px"><span>Total</span><strong>${fmt$(inv.total)}</strong></div>
             <div style="display:flex;justify-content:space-between"><span>Paid</span><strong style="color:#059669">${fmt$(inv.amountPaid || 0)}</strong></div>
-            <div style="display:flex;justify-content:space-between;border-top:1px solid var(--border);padding-top:8px"><span>Balance</span><strong>${fmt$(inv.balance)}</strong></div>
+            <div style="display:flex;justify-content:space-between"><span>Balance</span><strong>${fmt$(inv.balance)}</strong></div>
           </div>
         </div>
       </div>
+      ${wo ? `<div class="app-card" style="margin-top:16px">
+        <div class="app-card__header"><div class="app-card__title">Parts used</div></div>
+        <div class="table-wrap" style="border:none">
+          <table>
+            <thead><tr><th>Part</th><th>SKU</th><th style="text-align:right">Qty</th><th style="text-align:right">Unit</th><th style="text-align:right">Amount</th></tr></thead>
+            <tbody>${partsRows}
+              <tr><td colspan="4" style="text-align:right;font-weight:700">Parts subtotal</td><td style="text-align:right;font-weight:700">${fmt$(wo.parts || 0)}</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>` : ''}
       <div class="app-card" style="margin-top:16px">
         <div class="app-card__header"><div class="app-card__title">Payments</div></div>
         <div class="table-wrap" style="border:none">
-          <table><thead><tr><th>ID</th><th>Date</th><th>Amount</th><th>Method</th></tr></thead>
-          <tbody>${payments.map(p => `<tr><td>${p.id}</td><td>${p.date}</td><td>${p.amountDisplay}</td><td>${p.method}</td></tr>`).join('') || '<tr><td colspan="4">No payments recorded</td></tr>'}</tbody>
+          <table>
+            <thead><tr><th>ID</th><th>Date</th><th>Amount</th><th>Method</th><th>Status</th><th></th></tr></thead>
+            <tbody>${payments.map(p => `
+              <tr>
+                <td class="td-mono">${p.id}</td>
+                <td>${p.date}</td>
+                <td>${p.amountDisplay}${p.refundedAmount ? ` <span class="td-muted" style="font-size:.75rem">(−${p.refundedDisplay})</span>` : ''}</td>
+                <td>${p.method}</td>
+                <td>${chip(p.statusLabel || p.status)}</td>
+                <td class="td-actions">
+                  ${canRefund && p.canRefund ? `<button class="btn btn--ghost btn--sm" data-refund-id="${p.id}"><i class="fas fa-undo"></i> Refund</button>` : ''}
+                </td>
+              </tr>`).join('') || '<tr><td colspan="6">No payments recorded</td></tr>'}
+            </tbody>
           </table>
         </div>
-      </div>`;
+      </div>
+      <div class="app-card" style="margin-top:16px"><div class="app-card__body" id="mediaMount"></div></div>`;
+
+    ARS.MediaUI.mount(document.getElementById('mediaMount'), {
+      entityType: 'invoices',
+      entityId: inv.id,
+      title: 'Receipts & payment docs',
+      getEntity: () => ARS.Data.getInvoice(inv.id),
+    });
 
     document.getElementById('printBtn')?.addEventListener('click', () => ARS.Documents.printInvoice(id));
-    document.getElementById('payBtn')?.addEventListener('click', async () => {
-      const btn = document.getElementById('payBtn');
-      btn.disabled = true;
+    document.getElementById('payBtn')?.addEventListener('click', () => {
+      document.getElementById('invPayLabel').value = `${inv.id} · ${inv.customerName}`;
+      document.getElementById('invPayBalance').value = ARS.fmtMoney(inv.balance);
+      document.getElementById('invPayAmount').value = inv.balance.toFixed(2);
+      openModal('invPayModal');
+    });
+    document.getElementById('writeOffBtn')?.addEventListener('click', async () => {
+      const reason = await ARS.Pages.promptAsync({
+        title: 'Write off invoice',
+        message: `Provide a reason for writing off ${inv.id}.`,
+        label: 'Reason',
+        okLabel: 'Write off',
+        multiline: true,
+      });
+      if (!reason?.trim()) return;
       try {
-        await ARS.Payments.startCheckout(id, inv.balance);
+        await ARS.Data.writeOffInvoice(id, reason.trim());
+        showToast('Invoice written off', 'warning');
+        render();
       } catch (e) {
         showToast(e.message, 'error');
-        btn.disabled = false;
       }
     });
-    document.getElementById('writeOffBtn')?.addEventListener('click', () => {
-      const reason = prompt('Write-off reason:');
-      if (!reason) return;
-      ARS.Data.writeOffInvoice(id, reason);
-      showToast('Invoice written off', 'warning');
-      render();
+    document.querySelectorAll('[data-refund-id]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const paymentId = btn.dataset.refundId;
+        const p = ARS.Data.getPayment(paymentId);
+        if (!p?.canRefund) return showToast('This payment cannot be refunded', 'error');
+        document.getElementById('invRefundPayId').value = p.id;
+        document.getElementById('invRefundPayLabel').value = `${p.id} · ${p.customerName} · Invoice ${p.invoiceId}`;
+        document.getElementById('invRefundableLabel').value = ARS.fmtMoney(p.refundable);
+        document.getElementById('invRefundAmount').value = p.refundable.toFixed(2);
+        openModal('invRefundModal');
+      });
     });
   }
+
+  document.getElementById('invPayConfirm')?.addEventListener('click', async () => {
+    const amount = Number(document.getElementById('invPayAmount').value);
+    const invoiceId = new URLSearchParams(location.search).get('id');
+    if (!amount || amount <= 0) return showToast('Invalid payment amount', 'error');
+    const btn = document.getElementById('invPayConfirm');
+    btn.disabled = true;
+    try {
+      await ARS.Payments.startCheckout(invoiceId, amount);
+    } catch (e) {
+      showToast(e.message, 'error');
+      btn.disabled = false;
+    }
+  });
+
+  document.getElementById('invRefundConfirm')?.addEventListener('click', async () => {
+    const paymentId = document.getElementById('invRefundPayId').value;
+    const amount = Number(document.getElementById('invRefundAmount').value);
+    const reason = document.getElementById('invRefundReason').value;
+    const p = ARS.Data.getPayment(paymentId);
+    if (!p?.canRefund) return showToast('This payment cannot be refunded', 'error');
+    if (!amount || amount <= 0 || amount > p.refundable + 0.01) return showToast('Invalid refund amount', 'error');
+    const ok = await ARS.Pages.confirmAsync({
+      title: 'Confirm refund',
+      message: `Issue a ${ARS.fmtMoney(amount)} Stripe refund for ${p.id}? This cannot be undone from the app.`,
+      okLabel: 'Issue refund',
+    });
+    if (!ok) return;
+    const btn = document.getElementById('invRefundConfirm');
+    btn.disabled = true;
+    try {
+      await ARS.Payments.refundPayment(paymentId, { amount, reason });
+      closeModal('invRefundModal');
+      showToast(`Refunded ${ARS.fmtMoney(amount)}`, 'success');
+      render();
+    } catch (e) {
+      showToast(e.message || 'Refund failed', 'error');
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
   ARS.Pages.waitReady(() => { render(); document.addEventListener('ars:data-changed', render); });
 </script>
 </body>

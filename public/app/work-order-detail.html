@@ -6,29 +6,29 @@
   <link rel="icon" href="/favicon.ico" sizes="any">
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <title>Work Order Detail | Alex Road Service Ops</title>
-  <link rel="stylesheet" href="/app/css/app.css">
+  <link rel="stylesheet" href="/app/css/app.css?v=20260720w">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
 </head>
 <body class="app-body">
 <div id="sidebar-placeholder"></div>
 <main class="app-main">
   <div id="topbar-placeholder" data-title="Work Order"></div>
-  <div class="app-content" id="detailRoot">Loading…</div>
+  <div class="app-content" id="detailRoot"><div class="loading-state"><div class="loading-state__spinner"></div><div class="loading-state__text">Loading work order…</div></div></div>
 </main>
-<script src="/app/js/utils.js"></script>
-<script src="/app/js/demo-mode.js"></script>
-<script src="/app/js/data-store.js"></script>
-<script src="/app/js/auth.js"></script>
-<script src="/app/js/data-service.js"></script>
-<script src="/app/js/documents.js"></script>
-<script src="/app/js/page-scripts.js"></script>
-<script src="/app/js/app-components.js"></script>
+<script src="/app/js/utils.js?v=20260720w"></script>
+<script src="/app/js/demo-mode.js?v=20260720w"></script>
+<script src="/app/js/data-store.js?v=20260720w"></script>
+<script src="/app/js/auth.js?v=20260720w"></script>
+<script src="/app/js/data-service.js?v=20260720w"></script>
+<script src="/app/js/documents.js?v=20260720w"></script>
+<script src="/app/js/page-scripts.js?v=20260720w"></script>
+<script src="/app/js/app-components.js?v=20260720w"></script>
 <script>
-  const STATUSES = ['Open', 'In Progress', 'Waiting Parts', 'Completed', 'Invoiced'];
+  const EDITABLE_STATUSES = ['Open', 'In Progress', 'Waiting Parts', 'Completed'];
 
   function canEditWO(w) {
     if (ARS.can('workOrders.editAll')) return true;
-    if (ARS.Auth.getRole() === 'technician' && ARS.Auth.getUser()?.name === w.tech) return true;
+    if (ARS.Auth.getRole() === 'technician' && ARS.Data.woAssignedToUser(w)) return true;
     return false;
   }
 
@@ -36,24 +36,36 @@
     const id = new URLSearchParams(location.search).get('id');
     const w = ARS.Data.getWorkOrder(id);
     if (!w) {
-      document.getElementById('detailRoot').innerHTML = '<div class="empty-state"><div class="empty-state__title">Work order not found</div></div>';
+      document.getElementById('detailRoot').innerHTML = ARS.Pages.isDataReady()
+        ? '<div class="empty-state"><div class="empty-state__title">Work order not found</div><a href="/app/work-orders.html" class="btn btn--secondary" style="margin-top:12px">Back to work orders</a></div>'
+        : '<div class="loading-state"><div class="loading-state__spinner"></div><div class="loading-state__text">Loading work order…</div></div>';
       return;
     }
-    if (ARS.Auth.getRole() === 'technician' && ARS.Auth.getUser()?.name !== w.tech) {
+    if (ARS.Auth.getRole() === 'technician' && !ARS.Data.woAssignedToUser(w)) {
       document.getElementById('detailRoot').innerHTML = '<div class="empty-state"><div class="empty-state__title">You can only view your assigned work orders</div></div>';
       return;
     }
-    const editable = canEditWO(w);
+    const editable = canEditWO(w) && !w.invoiced && w.status !== 'Invoiced';
+    const statusOptions = w.invoiced || w.status === 'Invoiced'
+      ? [...EDITABLE_STATUSES, 'Invoiced']
+      : EDITABLE_STATUSES;
     const canInvoice = ARS.can('workOrders.invoice') && w.status === 'Completed' && !w.invoiced;
+    const linkedInv = ARS.Data.listInvoices().find((inv) => inv.workOrderId === w.id);
+    const est = w.estimateId ? ARS.Data.getEstimate(w.estimateId) : null;
+    const custHref = w.customerId ? `/app/customer-detail.html?id=${w.customerId}` : '';
+    const truck = w.truckId ? ARS.Data.getTruck(w.truckId) : null;
+    const truckHref = truck ? `/app/truck-detail.html?id=${truck.id}` : '';
     document.getElementById('detailRoot').innerHTML = `
       <div class="page-header">
         <div>
           <a href="/app/work-orders.html" style="font-size:.8rem;color:var(--steel)"><i class="fas fa-arrow-left"></i> Work Orders</a>
           <div class="page-header__title" style="margin-top:8px">${w.id}</div>
-          <div class="page-header__sub">${w.customerName} · ${w.truckLabel || '—'}</div>
+          <div class="page-header__sub">${ARS.Pages.entityLink(w.customerName, custHref)} · ${ARS.Pages.entityLink(w.truckLabel || '—', truckHref)}</div>
         </div>
         <div class="page-header__actions" style="display:flex;gap:8px;flex-wrap:wrap">
           <button class="btn btn--secondary" id="printBtn"><i class="fas fa-print"></i> Print</button>
+          ${linkedInv ? `<a href="${ARS.Pages.appHref(`/app/invoice-detail.html?id=${linkedInv.id}`)}" class="btn btn--secondary"><i class="fas fa-file-invoice"></i> View Invoice</a>` : ''}
+          ${est ? `<a href="${ARS.Pages.appHref(`/app/estimate-detail.html?id=${est.id}`)}" class="btn btn--ghost"><i class="fas fa-file-alt"></i> Source Estimate</a>` : ''}
           ${canInvoice ? `<button class="btn btn--primary" id="invoiceBtn"><i class="fas fa-file-invoice-dollar"></i> Generate Invoice</button>` : ''}
           ${editable ? `<button class="btn btn--ghost" id="saveBtn"><i class="fas fa-save"></i> Save Changes</button>` : chip(w.status)}
         </div>
@@ -66,12 +78,13 @@
               <div class="form-row"><label class="form-label">Date</label><input class="form-input" id="fDate" type="date" value="${ARS.toInputDate(w.date)}" ${editable ? '' : 'readonly'}></div>
               <div class="form-row"><label class="form-label">Status</label>
                 <select class="form-select" id="fStatus" ${editable ? '' : 'disabled'}>
-                  ${STATUSES.map(s => `<option value="${s}"${s===w.status?' selected':''}>${s}</option>`).join('')}
+                  ${statusOptions.map(s => `<option value="${s}"${s===w.status?' selected':''}>${s}</option>`).join('')}
                 </select>
               </div>
             </div>
-            <div class="form-row"><label class="form-label">Technician</label>
-              <select class="form-select" id="fTech" ${ARS.can('workOrders.assign') ? '' : 'disabled'}></select>
+            <div class="form-row"><label class="form-label">Technicians</label>
+              <div class="tech-picker" id="fTechPicker"></div>
+              ${ARS.can('workOrders.assign') && editable ? '<div class="td-muted" style="font-size:.75rem;margin-top:4px">Select one or more technicians</div>' : ''}
             </div>
             <div class="form-row"><label class="form-label">Service Type</label><input class="form-input" id="fService" value="${w.serviceType || ''}" ${editable ? '' : 'readonly'}></div>
             <div class="form-row"><label class="form-label">Description</label><textarea class="form-textarea" id="fDesc" ${editable ? '' : 'readonly'}>${w.desc || ''}</textarea></div>
@@ -85,11 +98,26 @@
             <div style="display:flex;justify-content:space-between;border-top:1px solid var(--border);padding-top:10px;font-size:1.1rem"><span>Total</span><strong id="fTotal">${fmt$(w.total)}</strong></div>
           </div>
         </div>
-      </div>`;
+      </div>
+      <div class="app-card" style="margin-top:16px"><div class="app-card__body" id="mediaMount"></div></div>`;
 
-    const techSel = document.getElementById('fTech');
-    ARS.Pages.populateTechSelect(techSel, w.tech);
-    if (!ARS.can('workOrders.assign')) techSel.disabled = true;
+    ARS.MediaUI.mount(document.getElementById('mediaMount'), {
+      entityType: 'workOrders',
+      entityId: w.id,
+      title: 'Job photos & videos',
+      getEntity: () => ARS.Data.getWorkOrder(w.id),
+    });
+
+    const canAssign = ARS.can('workOrders.assign') && editable;
+    const fillTechs = () => {
+      ARS.Pages.populateTechMultiSelect(
+        document.getElementById('fTechPicker'),
+        ARS.Data.getWoTechs(w),
+        { disabled: !canAssign },
+      );
+    };
+    ARS.Data.refreshTechs?.().finally(fillTechs);
+    fillTechs();
 
     const recalc = () => {
       const totals = ARS.calcTotals(document.getElementById('fLabor').value, document.getElementById('fParts').value, ARS.Store.getSettings());
@@ -102,16 +130,22 @@
     document.getElementById('invoiceBtn')?.addEventListener('click', async () => {
       try {
         const inv = await ARS.Data.createInvoiceFromWO(id);
-        showToast(`Invoice ${inv.id} created`, 'success');
+        ARS.Pages.successWithView({
+          title: 'Invoice created',
+          message: `Invoice ${inv.id} was generated for ${w.id}.`,
+          href: `/app/invoice-detail.html?id=${inv.id}`,
+          viewLabel: 'View invoice',
+        });
         render();
       } catch (err) { showToast(err.message, 'error'); }
     });
-    document.getElementById('saveBtn')?.addEventListener('click', () => {
+    document.getElementById('saveBtn')?.addEventListener('click', async () => {
       try {
-        ARS.Data.updateWorkOrder(id, {
+        const techs = ARS.Pages.getSelectedTechs(document.getElementById('fTechPicker'));
+        await ARS.Data.updateWorkOrder(id, {
           version: w.version,
           status: document.getElementById('fStatus').value,
-          tech: document.getElementById('fTech').value,
+          techs,
           serviceType: document.getElementById('fService').value,
           desc: document.getElementById('fDesc').value,
           labor: document.getElementById('fLabor').value,

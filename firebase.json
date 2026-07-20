@@ -32,7 +32,13 @@
       {
         "source": "**/*.@(js|css)",
         "headers": [
-          { "key": "Cache-Control", "value": "max-age=31536000" }
+          { "key": "Cache-Control", "value": "public, max-age=31536000" }
+        ]
+      },
+      {
+        "source": "/app/**/*.@(js|css)",
+        "headers": [
+          { "key": "Cache-Control", "value": "public, max-age=31536000" }
         ]
       },
       {
@@ -49,6 +55,9 @@
   "firestore": {
     "rules": "firestore.rules",
     "indexes": "firestore.indexes.json"
+  },
+  "storage": {
+    "rules": "storage.rules"
   },
   "functions": [
     {

@@ -6,7 +6,7 @@
   <link rel="icon" href="/favicon.ico" sizes="any">
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <title>Settings | Alex Road Service Ops</title>
-  <link rel="stylesheet" href="/app/css/app.css">
+  <link rel="stylesheet" href="/app/css/app.css?v=20260720w">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
 </head>
 <body class="app-body">
@@ -42,6 +42,12 @@
       </div>
     </div>
     <div class="app-card" style="max-width:640px;margin-top:20px">
+      <div class="app-card__header"><div class="app-card__title">Shop Logo</div></div>
+      <div class="app-card__body">
+        <div id="shopLogoMount"></div>
+      </div>
+    </div>
+    <div class="app-card" style="max-width:640px;margin-top:20px">
       <div class="app-card__header"><div class="app-card__title">Data Management</div></div>
       <div class="app-card__body" style="display:flex;gap:12px;flex-wrap:wrap">
         <button class="btn btn--secondary" id="exportAllBtn"><i class="fas fa-download"></i> Export Audit Log</button>
@@ -51,13 +57,13 @@
     </div>
   </div>
 </main>
-<script src="/app/js/utils.js"></script>
-<script src="/app/js/demo-mode.js"></script>
-<script src="/app/js/data-store.js"></script>
-<script src="/app/js/auth.js"></script>
-<script src="/app/js/data-service.js"></script>
-<script src="/app/js/page-scripts.js"></script>
-<script src="/app/js/app-components.js"></script>
+<script src="/app/js/utils.js?v=20260720w"></script>
+<script src="/app/js/demo-mode.js?v=20260720w"></script>
+<script src="/app/js/data-store.js?v=20260720w"></script>
+<script src="/app/js/auth.js?v=20260720w"></script>
+<script src="/app/js/data-service.js?v=20260720w"></script>
+<script src="/app/js/page-scripts.js?v=20260720w"></script>
+<script src="/app/js/app-components.js?v=20260720w"></script>
 <script>
   ARS.Pages.waitReady(() => {
     if (!ARS.can('settings.view')) {
@@ -98,21 +104,48 @@
         taxRate: Number(document.getElementById('taxRate').value) / 100,
         paymentTermsDays: Number(document.getElementById('paymentTerms').value),
       };
-      ARS.Store.setSettings(patch);
-      if (ARS.FirestoreSync?.isActive?.()) {
-        try {
-          await ARS.FirestoreSync.pushItem('settings', { id: 'shop', ...patch });
-        } catch (err) {
-          return showToast(err.message, 'error');
-        }
+      try {
+        await ARS.Data.saveShopSettings(patch);
+      } catch (err) {
+        return showToast(err.message, 'error');
       }
-      ARS.Data._audit({ action: 'settings.update', entityType: 'settings' });
       showToast('Settings saved', 'success');
     });
 
-    document.getElementById('exportAllBtn')?.addEventListener('click', () => {
-      const log = ARS.Store.getCollection('auditLog');
-      ARS.exportCSV('audit-log.csv', ['action','entityId','by','at'], log.map(l => [l.action, l.entityId || '', l.by, l.at]));
+    ARS.MediaUI.mountSingleImage(document.getElementById('shopLogoMount'), {
+      title: 'Shop logo',
+      currentUrl: s.shopLogoUrl || '',
+      entityType: 'settings',
+      entityId: 'logo',
+      canEdit: ARS.can('settings.edit'),
+      onUploaded: async (item) => {
+        const prev = ARS.Store.getSettings();
+        if (prev.shopLogoPath) await ARS.Media.deleteItem({ path: prev.shopLogoPath });
+        await ARS.Data.saveShopSettings({ shopLogoUrl: item.url, shopLogoPath: item.path });
+      },
+      onCleared: async () => {
+        const prev = ARS.Store.getSettings();
+        if (prev.shopLogoPath) await ARS.Media.deleteItem({ path: prev.shopLogoPath });
+        await ARS.Data.saveShopSettings({ shopLogoUrl: '', shopLogoPath: '' });
+      },
+    });
+
+    document.getElementById('exportAllBtn')?.addEventListener('click', async () => {
+      const btn = document.getElementById('exportAllBtn');
+      btn.disabled = true;
+      try {
+        const rows = await ARS.Data.fetchAuditLogForExport();
+        ARS.exportCSV(
+          'audit-log.csv',
+          ['At', 'Action', 'Entity Type', 'Entity ID', 'User ID', 'By (email)', 'Notes'],
+          rows.map((r) => [r.at, r.action, r.entityType, r.entityId, r.userId, r.by, r.notes])
+        );
+        showToast('Audit log exported', 'success');
+      } catch (e) {
+        showToast(e.message || 'Export failed', 'error');
+      } finally {
+        btn.disabled = false;
+      }
     });
 
     document.getElementById('reseedBtn')?.addEventListener('click', async () => {

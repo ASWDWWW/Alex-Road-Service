@@ -6,7 +6,7 @@
   <link rel="icon" href="/favicon.ico" sizes="any">
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <title>Work Orders | Alex Road Service Ops</title>
-  <link rel="stylesheet" href="/app/css/app.css">
+  <link rel="stylesheet" href="/app/css/app.css?v=20260720w">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
 </head>
 <body class="app-body">
@@ -22,7 +22,7 @@
       </div>
       <div class="page-header__actions">
         <button class="btn btn--secondary btn--sm" id="woExportBtn"><i class="fas fa-download"></i> Export</button>
-        <button class="btn btn--primary" onclick="openModal('createWoModal')"><i class="fas fa-plus"></i> Create Work Order</button>
+        <button class="btn btn--primary" id="createWoBtn"><i class="fas fa-plus"></i> Create Work Order</button>
       </div>
     </div>
 
@@ -80,7 +80,7 @@
             <th>Description</th><th>Tech</th><th>Labor</th><th>Parts</th><th>Total</th><th>Status</th><th>Actions</th>
           </tr>
         </thead>
-        <tbody id="woTable"></tbody>
+        <tbody id="woTable"><tr><td colspan="11"><div class="loading-state"><div class="loading-state__spinner"></div><div class="loading-state__text">Loading…</div></div></td></tr></tbody>
       </table>
     </div>
 
@@ -111,8 +111,9 @@
           <select class="form-select" id="woServiceType"></select>
         </div>
         <div class="form-row">
-          <label class="form-label">Assigned Tech</label>
-          <select class="form-select" id="woTech"></select>
+          <label class="form-label">Assigned Technicians</label>
+          <div class="tech-picker" id="woTechPicker"></div>
+          <div class="td-muted" style="font-size:.75rem;margin-top:4px">Select one or more technicians</div>
         </div>
       </div>
       <div class="form-row"><label class="form-label">Description / Complaint *</label><textarea class="form-textarea" id="woDesc" placeholder="Describe the issue or work to be done…"></textarea></div>
@@ -139,16 +140,36 @@
   </div>
 </div>
 
-<script src="/app/js/utils.js"></script>
-<script src="/app/js/demo-mode.js"></script>
-<script src="/app/js/data-store.js"></script>
-<script src="/app/js/auth.js"></script>
-<script src="/app/js/data-service.js"></script>
-<script src="/app/js/documents.js"></script>
-<script src="/app/js/page-scripts.js"></script>
-<script src="/app/js/app-components.js"></script>
+<script src="/app/js/utils.js?v=20260720w"></script>
+<script src="/app/js/demo-mode.js?v=20260720w"></script>
+<script src="/app/js/data-store.js?v=20260720w"></script>
+<script src="/app/js/auth.js?v=20260720w"></script>
+<script src="/app/js/data-service.js?v=20260720w"></script>
+<script src="/app/js/documents.js?v=20260720w"></script>
+<script src="/app/js/page-scripts.js?v=20260720w"></script>
+<script src="/app/js/app-components.js?v=20260720w"></script>
 <script>
-  let activeFilter = 'all', searchVal = '';
+  let activeFilter = 'all', searchVal = '', urlState = {};
+
+  function woMatchesFilter(w) {
+    if (activeFilter === 'all') return true;
+    if (activeFilter === 'actionable') {
+      return ['Open', 'In Progress', 'Waiting Parts'].includes(w.status)
+        || (w.status === 'Completed' && !w.invoiced);
+    }
+    if (activeFilter === 'mtd') {
+      return w.status === 'Completed' && ARS.Pages.isMtd(w.completedAt || w.updatedAt || w.date);
+    }
+    if (activeFilter === 'Invoiced') return w.invoiced || w.status === 'Invoiced';
+    return ARS.Pages.matchesStatusFilter(w.status, activeFilter, 'workOrders');
+  }
+
+  function getFilteredWorkOrders() {
+    let data = ARS.Data.listWorkOrders({ q: searchVal });
+    if (urlState.customerId) data = data.filter((w) => w.customerId === urlState.customerId);
+    if (urlState.truckId) data = data.filter((w) => w.truckId === urlState.truckId);
+    return data.filter(woMatchesFilter);
+  }
 
   function renderKpis() {
     const kpis = ARS.Data.getDashboardKPIs();
@@ -160,19 +181,17 @@
 
   function renderTable() {
     renderKpis();
-    const filters = { q: searchVal };
-    if (activeFilter !== 'all') filters.status = activeFilter;
-    const data = ARS.Data.listWorkOrders(filters);
+    const data = getFilteredWorkOrders();
     document.getElementById('woCount').textContent = `${data.length} order${data.length !== 1 ? 's' : ''}`;
     const canInvoice = ARS.can('workOrders.invoice');
     document.getElementById('woTable').innerHTML = data.length ? data.map(w => `
-      <tr>
-        <td class="td-mono td-bold" style="white-space:nowrap"><a href="/app/work-order-detail.html?id=${w.id}" style="color:inherit;text-decoration:none">${w.id}</a></td>
+      <tr data-row-id="${w.id}" style="cursor:pointer">
+        <td class="td-mono td-bold" style="white-space:nowrap">${ARS.Pages.entityLink(w.id, `/app/work-order-detail.html?id=${w.id}`)}</td>
         <td class="td-muted" style="white-space:nowrap">${w.date}</td>
-        <td class="td-primary">${w.customerName}</td>
-        <td class="td-muted td-wrap" style="font-size:.76rem;line-height:1.4">${w.truckLabel || '—'}</td>
+        <td class="td-primary">${ARS.Pages.entityLink(w.customerName, w.customerId ? `/app/customer-detail.html?id=${w.customerId}` : '')}</td>
+        <td class="td-muted td-wrap" style="font-size:.76rem;line-height:1.4">${w.truckId ? ARS.Pages.entityLink(w.truckLabel || '—', `/app/truck-detail.html?id=${w.truckId}`) : (w.truckLabel || '—')}</td>
         <td class="td-wrap" style="font-size:.8rem;color:var(--steel)">${w.desc}</td>
-        <td class="td-muted">${w.tech || '—'}</td>
+        <td class="td-muted">${ARS.Data.formatWoTechs(w)}</td>
         <td style="text-align:right">${fmt$(w.labor)}</td>
         <td style="text-align:right">${fmt$(w.parts)}</td>
         <td style="text-align:right;font-weight:700">${fmt$(w.total)}</td>
@@ -182,7 +201,7 @@
           ${w.status === 'Completed' && !w.invoiced && canInvoice ? `<button class="btn btn--primary btn--sm" onclick="invoiceWO('${w.id}')">Invoice</button>` : ''}
         </td>
       </tr>
-    `).join('') : `<tr><td colspan="11"><div class="empty-state"><div class="empty-state__icon"><i class="fas fa-clipboard-list"></i></div><div class="empty-state__title">No work orders found</div></div></td></tr>`;
+    `).join('') : ARS.Pages.tablePlaceholder(11, 'No work orders found', 'fa-clipboard-list');
   }
 
   window.invoiceWO = async (id) => {
@@ -190,7 +209,11 @@
     try {
       const inv = await ARS.Data.createInvoiceFromWO(id);
       renderTable();
-      showToast(`Invoice ${inv.id} created`, 'success');
+      ARS.Pages.successWithView({
+        title: 'Invoice created',
+        message: `${inv.id} created from ${id}.`,
+        href: `/app/invoice-detail.html?id=${inv.id}`,
+      });
     } catch (e) {
       showToast(e.message, 'error');
     }
@@ -201,16 +224,12 @@
     const truckSel = document.getElementById('woTruck');
     ARS.Pages.populateCustomerSelect(custSel);
     ARS.Pages.populateServiceSelect(document.getElementById('woServiceType'));
-    ARS.Pages.populateTechSelect(document.getElementById('woTech'));
+    ARS.Pages.populateTechMultiSelect(document.getElementById('woTechPicker'));
     document.getElementById('woDate').value = ARS.toInputDate();
 
-    const params = new URLSearchParams(window.location.search);
-    const preCustomer = params.get('customerId');
-    const preTruck = params.get('truckId');
-    if (preCustomer) {
-      custSel.value = preCustomer;
-      ARS.Pages.populateTruckSelect(truckSel, preCustomer, preTruck || '');
-      if (preTruck) openModal('createWoModal');
+    if (urlState.customerId) {
+      custSel.value = urlState.customerId;
+      ARS.Pages.populateTruckSelect(truckSel, urlState.customerId, urlState.truckId || '');
     }
 
     custSel.addEventListener('change', () => {
@@ -219,8 +238,34 @@
   }
 
   ARS.Pages.waitReady(() => {
+    urlState = ARS.Pages.applyListQuery({ tabsId: 'woFilterTabs', searchId: 'woSearch' });
+    activeFilter = urlState.filter;
+    searchVal = urlState.q || '';
     initCreateModal();
+    ARS.Pages.openModalIfRequested('createWoModal');
     renderTable();
+
+    document.getElementById('createWoBtn')?.addEventListener('click', async () => {
+      await ARS.Data.refreshTechs?.();
+      ARS.Pages.populateTechMultiSelect(document.getElementById('woTechPicker'));
+      openModal('createWoModal');
+    });
+    document.addEventListener('ars:techs-changed', () => {
+      ARS.Pages.populateTechMultiSelect(document.getElementById('woTechPicker'), ARS.Pages.getSelectedTechs(document.getElementById('woTechPicker')));
+    });
+    document.addEventListener('ars:data-changed', () => {
+      ARS.Pages.populateTechMultiSelect(document.getElementById('woTechPicker'), ARS.Pages.getSelectedTechs(document.getElementById('woTechPicker')));
+    });
+
+    ARS.Pages.bindKpiFilter('kpiOpen', '/app/work-orders.html?status=Open');
+    ARS.Pages.bindKpiFilter('kpiInProgress', '/app/work-orders.html?status=In Progress');
+    ARS.Pages.bindKpiFilter('kpiWaitingParts', '/app/work-orders.html?status=Waiting Parts');
+    ARS.Pages.bindKpiFilter('kpiCompletedMTD', '/app/work-orders.html?status=mtd');
+    document.getElementById('woTable')?.addEventListener('click', (e) => {
+      if (e.target.closest('a,button')) return;
+      const tr = e.target.closest('tr[data-row-id]');
+      if (tr) window.location.href = ARS.Pages.appHref(`/app/work-order-detail.html?id=${tr.dataset.rowId}`);
+    });
     ARS.Pages.bindFilters('woFilterTabs', 'woSearch', 'woCount', ({ filter, q }) => {
       if (filter !== undefined) activeFilter = filter;
       if (q !== undefined) searchVal = q;
@@ -230,7 +275,7 @@
 
     document.getElementById('woExportBtn')?.addEventListener('click', () => {
       const rows = ARS.Data.listWorkOrders().map(w =>
-        [w.id, w.date, w.customerName, w.truckLabel, w.tech, w.status, w.labor, w.parts, w.total]
+        [w.id, w.date, w.customerName, w.truckLabel, ARS.Data.formatWoTechs(w, ''), w.status, w.labor, w.parts, w.total]
       );
       ARS.exportCSV('work-orders.csv', ['WO','Date','Customer','Truck','Tech','Status','Labor','Parts','Total'], rows);
       showToast('Work orders exported', 'success');
@@ -247,13 +292,14 @@
       const custOpt = custSel.selectedOptions[0];
       const truckOpt = truckSel.selectedOptions[0];
       try {
-        await ARS.Data.createWorkOrder({
+        const techs = ARS.Pages.getSelectedTechs(document.getElementById('woTechPicker'));
+        const wo = await ARS.Data.createWorkOrder({
           customerId,
           customerName: custOpt?.dataset.name || custOpt?.textContent,
           truckId,
           truckLabel: truckOpt?.dataset.label || truckOpt?.textContent,
           serviceType: document.getElementById('woServiceType').value,
-          tech: document.getElementById('woTech').value,
+          techs,
           desc,
           labor: document.getElementById('woLabor').value,
           parts: document.getElementById('woParts').value,
@@ -264,8 +310,13 @@
         document.getElementById('woDesc').value = '';
         document.getElementById('woLabor').value = '';
         document.getElementById('woParts').value = '';
+        ARS.Pages.populateTechMultiSelect(document.getElementById('woTechPicker'));
         renderTable();
-        showToast('Work order created successfully!', 'success');
+        ARS.Pages.successWithView({
+          title: 'Work order created',
+          message: `${wo.id} has been created successfully.`,
+          href: `/app/work-order-detail.html?id=${wo.id}`,
+        });
       } catch (e) {
         showToast(e.message, 'error');
       }

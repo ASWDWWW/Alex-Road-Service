@@ -6,7 +6,7 @@
   <link rel="icon" href="/favicon.ico" sizes="any">
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <title>Trucks | Alex Road Service Ops</title>
-  <link rel="stylesheet" href="/app/css/app.css">
+  <link rel="stylesheet" href="/app/css/app.css?v=20260720w">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
 </head>
 <body class="app-body">
@@ -78,7 +78,7 @@
             <th>Mileage</th><th>Last PM</th><th>Next PM Due</th><th>Status</th><th>Actions</th>
           </tr>
         </thead>
-        <tbody id="truckTable"></tbody>
+        <tbody id="truckTable"><tr><td colspan="9"><div class="loading-state"><div class="loading-state__spinner"></div><div class="loading-state__text">Loading…</div></div></td></tr></tbody>
       </table>
     </div>
 
@@ -108,7 +108,7 @@
         <div class="form-row"><label class="form-label">Model</label><input class="form-input" id="truckModel" placeholder="e.g. T680"></div>
         <div class="form-row"><label class="form-label">Mileage</label><input class="form-input" id="truckMileage" type="number" placeholder="e.g. 214180"></div>
       </div>
-      <div class="form-row"><label class="form-label">VIN</label><input class="form-input" id="truckVin" placeholder="17-character VIN"></div>
+      <div class="form-row"><label class="form-label">VIN</label><input class="form-input" id="truckVin" placeholder="17-character VIN" maxlength="17" style="text-transform:uppercase;font-family:'Courier New',monospace"></div>
       <div class="form-row-2">
         <div class="form-row"><label class="form-label">Last PM Date</label><input class="form-input" id="truckLastPM" type="date"></div>
         <div class="form-row"><label class="form-label">Next PM Due</label><input class="form-input" id="truckNextPM" type="date"></div>
@@ -122,15 +122,15 @@
   </div>
 </div>
 
-<script src="/app/js/utils.js"></script>
-<script src="/app/js/demo-mode.js"></script>
-<script src="/app/js/data-store.js"></script>
-<script src="/app/js/auth.js"></script>
-<script src="/app/js/data-service.js"></script>
-<script src="/app/js/page-scripts.js"></script>
-<script src="/app/js/app-components.js"></script>
+<script src="/app/js/utils.js?v=20260720w"></script>
+<script src="/app/js/demo-mode.js?v=20260720w"></script>
+<script src="/app/js/data-store.js?v=20260720w"></script>
+<script src="/app/js/auth.js?v=20260720w"></script>
+<script src="/app/js/data-service.js?v=20260720w"></script>
+<script src="/app/js/page-scripts.js?v=20260720w"></script>
+<script src="/app/js/app-components.js?v=20260720w"></script>
 <script>
-  let activeFilter = 'all', searchVal = '';
+  let activeFilter = 'all', searchVal = '', urlState = {};
 
   function getFilteredTrucks() {
     let data = ARS.Data.listTrucks({ q: searchVal });
@@ -153,16 +153,17 @@
 
   function renderTable() {
     const all = ARS.Data.listTrucks();
-    const data = getFilteredTrucks();
+    let data = getFilteredTrucks();
+    if (urlState.customerId) data = data.filter((t) => t.customerId === urlState.customerId);
     renderKpis(all);
     document.getElementById('truckCount').textContent = `${data.length} unit${data.length !== 1 ? 's' : ''}`;
     const pmDueStyle = (s) => s === 'PM Due' ? 'background:rgba(230,81,0,.06)' : '';
     document.getElementById('truckTable').innerHTML = data.length ? data.map(t => `
-      <tr style="${pmDueStyle(t.status)}">
-        <td class="td-bold" style="font-size:.9rem"><a href="/app/truck-detail.html?id=${t.id}" style="color:inherit;text-decoration:none">Unit ${t.unit}</a></td>
+      <tr data-row-id="${t.id}" style="${pmDueStyle(t.status)};cursor:pointer">
+        <td class="td-bold" style="font-size:.9rem">${ARS.Pages.entityLink(`Unit ${t.unit}`, `/app/truck-detail.html?id=${t.id}`)}</td>
         <td class="td-primary">${t.year} ${t.make} ${t.model}</td>
         <td class="td-mono td-muted">${t.vin || '—'}</td>
-        <td>${t.owner}</td>
+        <td>${ARS.Pages.entityLink(t.owner, t.customerId ? `/app/customer-detail.html?id=${t.customerId}` : '')}</td>
         <td style="font-weight:600">${t.mileage}</td>
         <td class="td-muted">${t.lastPM}</td>
         <td class="${t.status === 'PM Due' ? 'td-red' : 'td-muted'}">${t.nextPM}</td>
@@ -172,16 +173,38 @@
           <button class="btn btn--primary btn--sm" onclick="newWOForTruck('${t.id}','${t.customerId}')">New WO</button>
         </td>
       </tr>
-    `).join('') : `<tr><td colspan="9"><div class="empty-state"><div class="empty-state__icon"><i class="fas fa-truck"></i></div><div class="empty-state__title">No trucks found</div></div></td></tr>`;
+    `).join('') : ARS.Pages.tablePlaceholder(9, 'No trucks found', 'fa-truck');
   }
 
   window.newWOForTruck = (truckId, customerId) => {
-    window.location.href = `/app/work-orders.html?truckId=${truckId}&customerId=${customerId}`;
+    window.location.href = ARS.Pages.appHref(`/app/work-orders.html?truckId=${truckId}&customerId=${customerId}&open=create`);
   };
 
   ARS.Pages.waitReady(() => {
-    ARS.Pages.populateCustomerSelect(document.getElementById('truckOwnerSelect'));
+    urlState = ARS.Pages.applyListQuery({ tabsId: 'truckFilterTabs', searchId: 'truckSearch' });
+    activeFilter = urlState.filter;
+    searchVal = urlState.q || '';
+    const ownerSel = document.getElementById('truckOwnerSelect');
+    ARS.Pages.populateCustomerSelect(ownerSel, urlState.customerId || '');
+    if (urlState.customerId) {
+      ownerSel.value = urlState.customerId;
+    }
+    ARS.Pages.openModalIfRequested('addTruckModal');
     renderTable();
+    ARS.VinLookup?.attachButton('truckVin', {
+      yearInputId: 'truckYear',
+      makeInputId: 'truckMake',
+      modelInputId: 'truckModel',
+    });
+    ARS.Pages.bindKpiFilter('kpiTotalUnits', '/app/trucks.html');
+    ARS.Pages.bindKpiFilter('kpiActive', '/app/trucks.html?status=Active');
+    ARS.Pages.bindKpiFilter('kpiInShop', '/app/trucks.html?status=In Shop');
+    ARS.Pages.bindKpiFilter('kpiPMDue', '/app/trucks.html?status=PM Due');
+    document.getElementById('truckTable')?.addEventListener('click', (e) => {
+      if (e.target.closest('a,button')) return;
+      const tr = e.target.closest('tr[data-row-id]');
+      if (tr) window.location.href = ARS.Pages.appHref(`/app/truck-detail.html?id=${tr.dataset.rowId}`);
+    });
     ARS.Pages.bindFilters('truckFilterTabs', 'truckSearch', 'truckCount', ({ filter, q }) => {
       if (filter !== undefined) activeFilter = filter;
       if (q !== undefined) searchVal = q;
@@ -204,8 +227,9 @@
       const make = document.getElementById('truckMake').value.trim();
       const model = document.getElementById('truckModel').value.trim();
       if (!unit || !customerId || !make || !model) return showToast('Unit, owner, make, and model required', 'error');
+      let truck;
       try {
-        await ARS.Data.createTruck({
+        truck = await ARS.Data.createTruck({
           unit,
           customerId,
           year: document.getElementById('truckYear').value,
@@ -226,7 +250,11 @@
       });
       document.getElementById('truckOwnerSelect').value = '';
       renderTable();
-      showToast('Truck added to fleet records!', 'success');
+      ARS.Pages.successWithView({
+        title: 'Truck added',
+        message: `Unit ${truck.unit} has been added to fleet records.`,
+        href: `/app/truck-detail.html?id=${truck.id}`,
+      });
     });
   });
 </script>

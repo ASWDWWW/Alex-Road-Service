@@ -22,7 +22,12 @@ function defaultState() {
     payments: [],
     inventory: [],
     notifications: [],
+    notificationReads: {},
     contactSubmissions: [],
+    employees: [],
+    conversations: [],
+    messages: {},
+    scheduleBlocks: [],
     auditLog: [],
     settings: {
       laborRate: 95,
@@ -75,6 +80,18 @@ ARS.Store = {
   subscribe(fn) {
     listeners.add(fn);
     return () => listeners.delete(fn);
+  },
+
+  /** True when localStorage already has ops data we can paint from (stale-while-revalidate). */
+  hasLocalCache() {
+    if (ARS.isDemoMode?.()) return true;
+    try {
+      const s = this.load();
+      const keys = ['customers', 'trucks', 'workOrders', 'estimates', 'invoices', 'inventory', 'payments'];
+      return keys.some((k) => (s[k] || []).length > 0);
+    } catch {
+      return false;
+    }
   },
 
   getCollection(name) {

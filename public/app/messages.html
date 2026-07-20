@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <title>Messages | Alex Road Service Ops</title>
+  <link rel="stylesheet" href="/app/css/app.css?v=20260720w">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+</head>
+<body class="app-body">
+<div id="sidebar-placeholder"></div>
+<main class="app-main">
+  <div id="topbar-placeholder" data-title="Messages"></div>
+  <div class="app-content msg-page">
+    <div class="page-header" style="margin-bottom:12px">
+      <div>
+        <div class="page-header__title">Messages</div>
+        <div class="page-header__sub">Encrypted internal staff messaging · end-to-end</div>
+      </div>
+      <div class="page-header__actions" style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn btn--secondary" id="msgNewGroupBtn"><i class="fas fa-users"></i> New group</button>
+        <button class="btn btn--primary" id="msgNewDmBtn"><i class="fas fa-plus"></i> New message</button>
+      </div>
+    </div>
+
+    <div class="msg-shell app-card">
+      <aside class="msg-sidebar">
+        <div class="msg-sidebar__search">
+          <i class="fas fa-search"></i>
+          <input type="text" id="msgConvoSearch" placeholder="Search conversations…">
+        </div>
+        <div class="msg-convo-list" id="msgConvoList">
+          <div class="loading-state"><div class="loading-state__spinner"></div><div class="loading-state__text">Loading…</div></div>
+        </div>
+      </aside>
+
+      <section class="msg-thread" id="msgThread">
+        <div class="msg-empty" id="msgEmpty">
+          <div class="msg-empty__icon"><i class="fas fa-lock"></i></div>
+          <div class="msg-empty__title">Secure staff messaging</div>
+          <p>Messages are encrypted on your device before they leave the browser. Only conversation participants can decrypt them.</p>
+          <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
+            <button class="btn btn--secondary" id="msgEmptyGroupBtn"><i class="fas fa-users"></i> New group</button>
+            <button class="btn btn--primary" id="msgEmptyNewBtn"><i class="fas fa-plus"></i> New message</button>
+          </div>
+        </div>
+
+        <div class="msg-thread__active" id="msgThreadActive" hidden>
+          <header class="msg-thread__header">
+            <button type="button" class="btn btn--ghost btn--icon msg-back" id="msgBackBtn" title="Back"><i class="fas fa-arrow-left"></i></button>
+            <div style="min-width:0;flex:1">
+              <div class="msg-thread__title" id="msgThreadTitle">—</div>
+              <div class="msg-thread__sub" id="msgThreadSub">End-to-end encrypted</div>
+            </div>
+            <button type="button" class="btn btn--ghost btn--sm" id="msgRenameBtn" hidden title="Rename group"><i class="fas fa-pen"></i> Rename</button>
+            <span class="chip chip--completed" title="Client-side E2EE"><i class="fas fa-shield-alt"></i> E2EE</span>
+          </header>
+          <div class="msg-thread__body" id="msgThreadBody"></div>
+          <footer class="msg-composer">
+            <input type="file" id="msgFileInput" hidden accept="image/*,video/*,application/pdf">
+            <button type="button" class="btn btn--ghost btn--icon" id="msgAttachBtn" title="Attach"><i class="fas fa-paperclip"></i></button>
+            <textarea class="form-textarea" id="msgInput" rows="1" placeholder="Write a message…"></textarea>
+            <button type="button" class="btn btn--primary" id="msgSendBtn"><i class="fas fa-paper-plane"></i></button>
+          </footer>
+        </div>
+      </section>
+    </div>
+  </div>
+</main>
+
+<!-- New DM modal -->
+<div class="modal-overlay" id="msgDmModal">
+  <div class="modal" style="max-width:420px">
+    <div class="modal__header">
+      <div class="modal__title">New message</div>
+      <button class="modal__close" data-close-modal><i class="fas fa-times"></i></button>
+    </div>
+    <div class="modal__body">
+      <div class="form-row">
+        <label class="form-label">Teammate</label>
+        <input class="form-input" id="msgDmSearch" placeholder="Search staff…">
+      </div>
+      <div id="msgDmRoster" class="msg-roster"></div>
+    </div>
+  </div>
+</div>
+
+<!-- New group modal -->
+<div class="modal-overlay" id="msgGroupModal">
+  <div class="modal" style="max-width:460px">
+    <div class="modal__header">
+      <div class="modal__title">New group chat</div>
+      <button class="modal__close" data-close-modal><i class="fas fa-times"></i></button>
+    </div>
+    <div class="modal__body">
+      <div class="form-row">
+        <label class="form-label">Group title *</label>
+        <input class="form-input" id="msgGroupTitle" placeholder="e.g. Bay 2 crew" maxlength="60" required>
+      </div>
+      <div class="form-row">
+        <label class="form-label">Add members *</label>
+        <input class="form-input" id="msgGroupSearch" placeholder="Search staff…">
+      </div>
+      <div id="msgGroupRoster" class="msg-roster"></div>
+      <p id="msgGroupSelectedHint" class="td-muted" style="font-size:.8rem;margin-top:8px">Select at least one teammate</p>
+    </div>
+    <div class="modal__footer">
+      <button class="btn btn--secondary" data-close-modal>Cancel</button>
+      <button class="btn btn--primary" id="msgGroupCreateBtn"><i class="fas fa-check"></i> Create group</button>
+    </div>
+  </div>
+</div>
+
+<!-- Rename group modal -->
+<div class="modal-overlay" id="msgRenameModal">
+  <div class="modal" style="max-width:400px">
+    <div class="modal__header">
+      <div class="modal__title">Rename group</div>
+      <button class="modal__close" data-close-modal><i class="fas fa-times"></i></button>
+    </div>
+    <div class="modal__body">
+      <div class="form-row">
+        <label class="form-label">Group title *</label>
+        <input class="form-input" id="msgRenameTitle" maxlength="60" placeholder="Group title">
+      </div>
+    </div>
+    <div class="modal__footer">
+      <button class="btn btn--secondary" data-close-modal>Cancel</button>
+      <button class="btn btn--primary" id="msgRenameSaveBtn"><i class="fas fa-check"></i> Save</button>
+    </div>
+  </div>
+</div>
+
+<script src="/app/js/utils.js?v=20260720w"></script>
+<script src="/app/js/demo-mode.js?v=20260720w"></script>
+<script src="/app/js/data-store.js?v=20260720w"></script>
+<script src="/app/js/auth.js?v=20260720w"></script>
+<script src="/app/js/data-service.js?v=20260720w"></script>
+<script src="/app/js/page-scripts.js?v=20260720w"></script>
+<script src="/app/js/app-components.js?v=20260720w"></script>
+<script>
+  let activeId = '';
+  let convoFilter = '';
+  let pendingFile = null;
+
+  function esc(s) {
+    return String(s ?? '').replace(/[&<>"']/g, (c) => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+    }[c]));
+  }
+
+  function fmtTime(iso) {
+    if (!iso) return '';
+    const d = new Date(iso);
+    if (isNaN(d)) return '';
+    const now = new Date();
+    const sameDay = d.toDateString() === now.toDateString();
+    return sameDay
+      ? d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+      : d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+  }
+
+  function renderConvoList() {
+    const list = document.getElementById('msgConvoList');
+    let convos = ARS.Messaging.getConversations();
+    if (convoFilter) {
+      const q = convoFilter.toLowerCase();
+      convos = convos.filter((c) => ARS.Messaging.titleFor(c).toLowerCase().includes(q)
+        || (c.lastMessagePreview || '').toLowerCase().includes(q));
+    }
+    if (!convos.length) {
+      list.innerHTML = `<div class="msg-convo-empty">No conversations yet.<br><button class="btn btn--secondary btn--sm" style="margin-top:10px" id="msgListNewBtn">New message</button></div>`;
+      document.getElementById('msgListNewBtn')?.addEventListener('click', openDmModal);
+      return;
+    }
+    list.innerHTML = convos.map((c) => {
+      const unread = ARS.Messaging.isUnread(c);
+      const title = ARS.Messaging.titleFor(c);
+      const icon = c.type === 'shop' ? 'fa-bullhorn' : c.type === 'group' ? 'fa-users' : 'fa-user';
+      return `
+        <button type="button" class="msg-convo ${c.id === activeId ? 'is-active' : ''} ${unread ? 'is-unread' : ''}" data-id="${esc(c.id)}">
+          <div class="msg-convo__avatar"><i class="fas ${icon}"></i></div>
+          <div class="msg-convo__meta">
+            <div class="msg-convo__top">
+              <span class="msg-convo__name">${esc(title)}</span>
+              <span class="msg-convo__time">${esc(fmtTime(c.lastMessageAt))}</span>
+            </div>
+            <div class="msg-convo__preview">${esc(c.lastMessagePreview || 'No messages yet')}</div>
+          </div>
+          ${unread ? '<span class="msg-convo__dot"></span>' : ''}
+        </button>`;
+    }).join('');
+    list.querySelectorAll('.msg-convo').forEach((btn) => {
+      btn.addEventListener('click', () => openThread(btn.dataset.id));
+    });
+  }
+
+  function renderRoster(containerId, { multi = false, selected = new Set(), searchId = null } = {}) {
+    const el = document.getElementById(containerId);
+    const q = (searchId ? document.getElementById(searchId)?.value : '')?.toLowerCase() || '';
+    let roster = ARS.Messaging.getRoster();
+    if (q) {
+      roster = roster.filter((r) =>
+        (r.name || '').toLowerCase().includes(q) || (r.email || '').toLowerCase().includes(q));
+    }
+    if (!roster.length) {
+      el.innerHTML = '<div class="td-muted" style="padding:12px;font-size:.85rem">No other staff found. Hire teammates or wait for directory sync.</div>';
+      return;
+    }
+    el.innerHTML = roster.map((r) => `
+      <label class="msg-roster__row">
+        <input type="${multi ? 'checkbox' : 'radio'}" name="${multi ? 'grp' : 'dm'}" value="${esc(r.uid)}" ${selected.has(r.uid) ? 'checked' : ''}>
+        <div style="flex:1;min-width:0">
+          <div class="msg-roster__name">${esc(ARS.Messaging.labelFromRoster(r))}</div>
+          <div class="msg-roster__sub">${esc(ARS.ROLE_LABELS[r.role] || r.role)}${r.jobTitle ? ' · ' + esc(r.jobTitle) : ''}</div>
+        </div>
+        ${r.messagingPublicKey ? '<i class="fas fa-lock" title="Encryption key ready" style="color:var(--steel);opacity:.5"></i>' : '<i class="fas fa-lock-open" title="Will encrypt when they open Messages" style="color:var(--warm-gray)"></i>'}
+      </label>
+    `).join('');
+
+    if (!multi) {
+      el.querySelectorAll('input[type=radio]').forEach((input) => {
+        input.addEventListener('change', async () => {
+          try {
+            closeModal('msgDmModal');
+            const convo = await ARS.Messaging.openOrCreateDm(input.value);
+            openThread(convo.id);
+            renderConvoList();
+          } catch (e) {
+            showToast(e.message || 'Could not open chat', 'error');
+          }
+        });
+      });
+    } else {
+      const updateHint = () => {
+        const n = el.querySelectorAll('input:checked').length;
+        const hint = document.getElementById('msgGroupSelectedHint');
+        if (hint) hint.textContent = n ? `${n} member${n === 1 ? '' : 's'} selected` : 'Select at least one teammate';
+      };
+      el.querySelectorAll('input[type=checkbox]').forEach((input) => {
+        input.addEventListener('change', updateHint);
+      });
+      updateHint();
+    }
+  }
+
+  function openDmModal() {
+    renderRoster('msgDmRoster', { multi: false, searchId: 'msgDmSearch' });
+    openModal('msgDmModal');
+    document.getElementById('msgDmSearch').value = '';
+    document.getElementById('msgDmSearch')?.focus();
+  }
+
+  function openGroupModal() {
+    document.getElementById('msgGroupTitle').value = '';
+    document.getElementById('msgGroupSearch').value = '';
+    renderRoster('msgGroupRoster', { multi: true, searchId: 'msgGroupSearch' });
+    openModal('msgGroupModal');
+    document.getElementById('msgGroupTitle')?.focus();
+  }
+
+  async function openThread(id) {
+    activeId = id;
+    const convo = ARS.Messaging.getConversations().find((c) => c.id === id);
+    if (!convo) return;
+    document.getElementById('msgEmpty').hidden = true;
+    document.getElementById('msgThreadActive').hidden = false;
+    document.getElementById('msgThread')?.classList.add('has-thread');
+    document.getElementById('msgThreadTitle').textContent = ARS.Messaging.titleFor(convo);
+    const n = (convo.participantIds || []).length;
+    document.getElementById('msgThreadSub').textContent =
+      `${convo.type === 'shop' ? 'Everyone on staff' : n + ' participant' + (n === 1 ? '' : 's')} · end-to-end encrypted`;
+    const renameBtn = document.getElementById('msgRenameBtn');
+    if (renameBtn) renameBtn.hidden = convo.type !== 'group';
+    renderConvoList();
+    document.getElementById('msgThreadBody').innerHTML = '<div class="loading-state"><div class="loading-state__spinner"></div></div>';
+    ARS.Messaging.listenMessages(id, (messages) => {
+      renderMessages(messages);
+      ARS.Messaging.markRead(id).catch(() => {});
+    });
+  }
+
+  function renderMessages(messages) {
+    const body = document.getElementById('msgThreadBody');
+    const uid = ARS.Auth.getUser()?.uid || 'demo_user';
+    if (!messages.length) {
+      body.innerHTML = '<div class="msg-thread__hint">No messages yet — say hello. Content is encrypted before send.</div>';
+      return;
+    }
+    body.innerHTML = messages.map((m) => {
+      const mine = m.senderId === uid;
+      const att = m.attachment;
+      let attHtml = '';
+      if (att?.url) {
+        if ((att.contentType || '').startsWith('image/')) {
+          attHtml = `<a href="${esc(att.url)}" target="_blank" rel="noopener"><img class="msg-bubble__img" src="${esc(att.url)}" alt=""></a>`;
+        } else {
+          attHtml = `<a class="msg-bubble__file" href="${esc(att.url)}" target="_blank" rel="noopener"><i class="fas fa-file"></i> ${esc(att.name || 'Attachment')}</a>`;
+        }
+      } else if (att?.demo) {
+        attHtml = `<div class="msg-bubble__file"><i class="fas fa-file"></i> ${esc(att.name)} (demo)</div>`;
+      }
+      return `
+        <div class="msg-row ${mine ? 'is-mine' : ''}">
+          ${mine ? '' : `<div class="msg-row__name">${esc((m.senderName && !/^[^\s@]+@/.test(m.senderName) ? m.senderName : null) || ARS.Messaging.staffName(m.senderId) || 'Staff')}</div>`}
+          <div class="msg-bubble ${m.decrypted === false ? 'is-locked' : ''}">
+            ${attHtml}
+            ${m.text ? `<div>${esc(m.text)}</div>` : ''}
+            <div class="msg-bubble__time">${esc(fmtTime(m.createdAt))}${m.decrypted === false ? ' · locked' : ''}</div>
+          </div>
+        </div>`;
+    }).join('');
+    body.scrollTop = body.scrollHeight;
+  }
+
+  async function sendCurrent() {
+    if (!activeId) return;
+    const input = document.getElementById('msgInput');
+    const text = input.value;
+    const btn = document.getElementById('msgSendBtn');
+    btn.disabled = true;
+    try {
+      let attachment = null;
+      if (pendingFile) {
+        attachment = await ARS.Messaging.uploadAttachment(activeId, pendingFile);
+        pendingFile = null;
+        document.getElementById('msgAttachBtn').classList.remove('has-file');
+      }
+      await ARS.Messaging.sendMessage(activeId, text, attachment);
+      input.value = '';
+      input.style.height = 'auto';
+      renderConvoList();
+    } catch (e) {
+      showToast(e.message || 'Send failed', 'error');
+    } finally {
+      btn.disabled = false;
+      input.focus();
+    }
+  }
+
+  ARS.Pages.waitReady(async () => {
+    if (!ARS.can('messages.view')) {
+      showToast('Permission denied', 'error');
+      setTimeout(() => { location.href = '/app/dashboard.html'; }, 500);
+      return;
+    }
+    try {
+      await ARS.Messaging.init();
+    } catch (e) {
+      showToast(e.message || 'Could not start messaging', 'error');
+    }
+    renderConvoList();
+
+    const shop = ARS.Messaging.getConversations().find((c) => c.type === 'shop');
+    if (shop && !activeId) {
+      /* leave empty until user selects */
+    }
+
+    document.getElementById('msgNewDmBtn')?.addEventListener('click', openDmModal);
+    document.getElementById('msgEmptyNewBtn')?.addEventListener('click', openDmModal);
+    document.getElementById('msgEmptyGroupBtn')?.addEventListener('click', openGroupModal);
+    document.getElementById('msgNewGroupBtn')?.addEventListener('click', openGroupModal);
+    document.getElementById('msgDmSearch')?.addEventListener('input', () =>
+      renderRoster('msgDmRoster', { multi: false, searchId: 'msgDmSearch' }));
+    document.getElementById('msgGroupSearch')?.addEventListener('input', () => {
+      const selected = new Set([...document.querySelectorAll('#msgGroupRoster input:checked')].map((i) => i.value));
+      renderRoster('msgGroupRoster', { multi: true, searchId: 'msgGroupSearch', selected });
+    });
+    document.getElementById('msgConvoSearch')?.addEventListener('input', (e) => {
+      convoFilter = e.target.value.trim();
+      renderConvoList();
+    });
+    document.getElementById('msgSendBtn')?.addEventListener('click', sendCurrent);
+    document.getElementById('msgInput')?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendCurrent();
+      }
+    });
+    document.getElementById('msgInput')?.addEventListener('input', (e) => {
+      e.target.style.height = 'auto';
+      e.target.style.height = Math.min(120, e.target.scrollHeight) + 'px';
+    });
+    document.getElementById('msgAttachBtn')?.addEventListener('click', () => document.getElementById('msgFileInput').click());
+    document.getElementById('msgFileInput')?.addEventListener('change', (e) => {
+      pendingFile = e.target.files?.[0] || null;
+      document.getElementById('msgAttachBtn').classList.toggle('has-file', !!pendingFile);
+      e.target.value = '';
+    });
+    document.getElementById('msgBackBtn')?.addEventListener('click', () => {
+      document.getElementById('msgThread')?.classList.remove('has-thread');
+    });
+    document.getElementById('msgRenameBtn')?.addEventListener('click', () => {
+      const convo = ARS.Messaging.getConversations().find((c) => c.id === activeId);
+      if (!convo || convo.type !== 'group') return;
+      document.getElementById('msgRenameTitle').value = convo.title || '';
+      openModal('msgRenameModal');
+      document.getElementById('msgRenameTitle')?.focus();
+    });
+    document.getElementById('msgRenameSaveBtn')?.addEventListener('click', async () => {
+      const title = document.getElementById('msgRenameTitle').value.trim();
+      try {
+        await ARS.Messaging.renameGroup(activeId, title);
+        closeModal('msgRenameModal');
+        document.getElementById('msgThreadTitle').textContent = title;
+        renderConvoList();
+        showToast('Group renamed', 'success');
+      } catch (e) {
+        showToast(e.message || 'Could not rename', 'error');
+      }
+    });
+    document.getElementById('msgGroupCreateBtn')?.addEventListener('click', async () => {
+      const title = document.getElementById('msgGroupTitle').value.trim();
+      const ids = [...document.querySelectorAll('#msgGroupRoster input:checked')].map((i) => i.value);
+      if (!title) return showToast('Enter a group title', 'error');
+      if (!ids.length) return showToast('Select at least one member', 'error');
+      const btn = document.getElementById('msgGroupCreateBtn');
+      btn.disabled = true;
+      try {
+        const convo = await ARS.Messaging.createGroup(title, ids);
+        closeModal('msgGroupModal');
+        openThread(convo.id);
+        renderConvoList();
+        showToast(`Group “${title}” created`, 'success');
+      } catch (e) {
+        showToast(e.message || 'Could not create group', 'error');
+      } finally {
+        btn.disabled = false;
+      }
+    });
+
+    document.addEventListener('ars:messages-changed', () => {
+      renderConvoList();
+      if (activeId) {
+        const convo = ARS.Messaging.getConversations().find((c) => c.id === activeId);
+        if (convo) document.getElementById('msgThreadTitle').textContent = ARS.Messaging.titleFor(convo);
+      }
+    });
+  });
+</script>
+</body>
+</html>

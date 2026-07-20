@@ -134,6 +134,11 @@ document.addEventListener('DOMContentLoaded', () => {
   const successAlert  = document.getElementById('formSuccess');
   const errorAlert    = document.getElementById('formError');
 
+  const contactMediaMount = document.getElementById('contactMediaMount');
+  if (contactMediaMount && window.ARS?.MediaUI?.mountPublicLeadUploader) {
+    window.__leadMedia = window.ARS.MediaUI.mountPublicLeadUploader(contactMediaMount);
+  }
+
   contactForm?.addEventListener('submit', async (e) => {
     e.preventDefault();
     const btn = contactForm.querySelector('[type="submit"]');
@@ -152,6 +157,7 @@ document.addEventListener('DOMContentLoaded', () => {
       message:   contactForm.elements['message']?.value  || '',
       timestamp: new Date().toISOString(),
       source:    'website-contact-form',
+      media:     window.__leadMedia?.getMedia?.() || [],
     };
 
     try {
@@ -164,6 +170,7 @@ document.addEventListener('DOMContentLoaded', () => {
       successAlert?.classList.add('show');
       errorAlert?.classList.remove('show');
       contactForm.reset();
+      window.__leadMedia?.clear?.();
       successAlert?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     } catch (err) {
       console.error('Form error:', err);

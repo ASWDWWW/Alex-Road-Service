@@ -9,10 +9,16 @@ const FIREBASE_CONFIG = {
   measurementId:     "G-743F7YVS18",
 };
 
+const FB_VERSION = '10.7.1';
+
 window.ARSFirebase = window.ARSFirebase || { configured: false };
 
 function isFirebaseConfigured() {
   return FIREBASE_CONFIG.projectId && !FIREBASE_CONFIG.projectId.includes('YOUR_');
+}
+
+function isOpsAppPath() {
+  return typeof location !== 'undefined' && location.pathname.startsWith('/app');
 }
 
 function loadGoogleAnalytics(measurementId) {
@@ -30,28 +36,51 @@ function loadGoogleAnalytics(measurementId) {
 async function initFirebase() {
   if (!isFirebaseConfigured()) return null;
   try {
-    const { initializeApp } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js');
-    const { getFirestore, collection, addDoc, doc, getDoc } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js');
-    const { getAuth } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js');
-    const { getAnalytics, isSupported } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-analytics.js');
+    const ops = isOpsAppPath();
+    const [{ initializeApp }, firestoreMod, { getAuth }, storageMod] = await Promise.all([
+      import(`https://www.gstatic.com/firebasejs/${FB_VERSION}/firebase-app.js`),
+      import(`https://www.gstatic.com/firebasejs/${FB_VERSION}/firebase-firestore.js`),
+      import(`https://www.gstatic.com/firebasejs/${FB_VERSION}/firebase-auth.js`),
+      import(`https://www.gstatic.com/firebasejs/${FB_VERSION}/firebase-storage.js`),
+    ]);
 
+    const { getFirestore, collection, addDoc, doc, getDoc } = firestoreMod;
+    const { getStorage } = storageMod;
     const app = initializeApp(FIREBASE_CONFIG);
     const db = getFirestore(app);
     const auth = getAuth(app);
-
-    loadGoogleAnalytics(FIREBASE_CONFIG.measurementId);
+    const storage = getStorage(app);
 
     let analytics = null;
-    try {
-      if (await isSupported()) analytics = getAnalytics(app);
-    } catch (_) {}
+    // Skip Analytics on ops pages — saves a network round-trip on every navigation
+    if (!ops) {
+      loadGoogleAnalytics(FIREBASE_CONFIG.measurementId);
+      try {
+        const { getAnalytics, isSupported } = await import(
+          `https://www.gstatic.com/firebasejs/${FB_VERSION}/firebase-analytics.js`
+        );
+        if (await isSupported()) analytics = getAnalytics(app);
+      } catch (_) {}
+    }
 
     window.ARSFirebase = {
       configured: true,
-      app, db, auth, analytics,
+      app, db, auth, storage, analytics,
+      _mods: { firestore: firestoreMod, storage: storageMod },
       async getUserProfile(uid) {
         const snap = await getDoc(doc(db, 'users', uid));
         return snap.exists() ? snap.data() : null;
+      },
+      async updateUserProfile(uid, patch) {
+        const { setDoc } = firestoreMod;
+        await setDoc(doc(db, 'users', uid), { ...patch, updatedAt: new Date().toISOString() }, { merge: true });
+      },
+      /** Send Firebase Auth password-reset email (uses project email template) */
+      async sendPasswordResetEmail(email) {
+        const { sendPasswordResetEmail } = await import(
+          `https://www.gstatic.com/firebasejs/${FB_VERSION}/firebase-auth.js`
+        );
+        await sendPasswordResetEmail(auth, String(email).trim().toLowerCase());
       },
     };
     return window.ARSFirebase;
@@ -62,10 +91,15 @@ async function initFirebase() {
 }
 
 window.submitContactForm = async (formData) => {
+  const media = Array.isArray(formData.media) ? formData.media : [];
+  const payload = { ...formData };
+  delete payload.media;
   if (window.ARSFirebase?.configured && window.ARSFirebase.db) {
-    const { collection, addDoc } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js');
+    const { collection, addDoc } = await import(`https://www.gstatic.com/firebasejs/${FB_VERSION}/firebase-firestore.js`);
     const ref = await addDoc(collection(window.ARSFirebase.db, 'contact_submissions'), {
-      ...formData,
+      ...payload,
+      media,
+      status: 'New',
       createdAt: new Date().toISOString(),
     });
     return ref;
@@ -73,7 +107,13 @@ window.submitContactForm = async (formData) => {
   if (window.ARS?.Store) {
     const s = window.ARS.Store.load();
     s.contactSubmissions = s.contactSubmissions || [];
-    s.contactSubmissions.unshift({ id: 'sub_' + Date.now(), ...formData, createdAt: new Date().toISOString() });
+    s.contactSubmissions.unshift({
+      id: 'sub_' + Date.now(),
+      ...payload,
+      media,
+      status: 'New',
+      createdAt: new Date().toISOString(),
+    });
     window.ARS.Store.save(s);
     return { id: 'local' };
   }

@@ -6,7 +6,7 @@
   <link rel="icon" href="/favicon.ico" sizes="any">
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <title>Estimates | Alex Road Service Ops</title>
-  <link rel="stylesheet" href="/app/css/app.css">
+  <link rel="stylesheet" href="/app/css/app.css?v=20260720w">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
 </head>
 <body class="app-body">
@@ -21,7 +21,7 @@
         <div class="page-header__sub">Generate and track service estimates before work begins</div>
       </div>
       <div class="page-header__actions">
-        <button class="btn btn--secondary btn--sm"><i class="fas fa-download"></i> Export</button>
+        <button class="btn btn--secondary btn--sm" id="estExportBtn"><i class="fas fa-download"></i> Export</button>
         <button class="btn btn--primary" onclick="openModal('createEstModal')"><i class="fas fa-plus"></i> New Estimate</button>
       </div>
     </div>
@@ -36,7 +36,7 @@
       </div>
       <div class="kpi-card">
         <div class="kpi-card__row">
-          <div><div class="kpi-card__label">Pending</div><div class="kpi-card__value amber" id="kpiEstPending">0</div></div>
+          <div><div class="kpi-card__label">Awaiting Response</div><div class="kpi-card__value amber" id="kpiEstPending">0</div></div>
           <div class="kpi-card__icon amber"><i class="fas fa-clock"></i></div>
         </div>
       </div>
@@ -48,7 +48,7 @@
       </div>
       <div class="kpi-card">
         <div class="kpi-card__row">
-          <div><div class="kpi-card__label">Est. Value (Pending)</div><div class="kpi-card__value" id="kpiEstValue">$0</div></div>
+          <div><div class="kpi-card__label">Est. Value (Awaiting)</div><div class="kpi-card__value" id="kpiEstValue">$0</div></div>
           <div class="kpi-card__icon blue"><i class="fas fa-dollar-sign"></i></div>
         </div>
       </div>
@@ -78,7 +78,7 @@
             <th>Description</th><th>Labor</th><th>Parts</th><th>Total</th><th>Status</th><th>Actions</th>
           </tr>
         </thead>
-        <tbody id="estTable"></tbody>
+        <tbody id="estTable"><tr><td colspan="10"><div class="loading-state"><div class="loading-state__spinner"></div><div class="loading-state__text">Loading…</div></div></td></tr></tbody>
       </table>
     </div>
 
@@ -117,16 +117,26 @@
   </div>
 </div>
 
-<script src="/app/js/utils.js"></script>
-<script src="/app/js/demo-mode.js"></script>
-<script src="/app/js/data-store.js"></script>
-<script src="/app/js/auth.js"></script>
-<script src="/app/js/data-service.js"></script>
-<script src="/app/js/documents.js"></script>
-<script src="/app/js/page-scripts.js"></script>
-<script src="/app/js/app-components.js"></script>
+<script src="/app/js/utils.js?v=20260720w"></script>
+<script src="/app/js/demo-mode.js?v=20260720w"></script>
+<script src="/app/js/data-store.js?v=20260720w"></script>
+<script src="/app/js/auth.js?v=20260720w"></script>
+<script src="/app/js/data-service.js?v=20260720w"></script>
+<script src="/app/js/documents.js?v=20260720w"></script>
+<script src="/app/js/page-scripts.js?v=20260720w"></script>
+<script src="/app/js/app-components.js?v=20260720w"></script>
 <script>
-  let activeFilter = 'all', searchVal = '';
+  let activeFilter = 'all', searchVal = '', urlState = {};
+
+  function getFilteredEstimates() {
+    let data = ARS.Data.listEstimates({ q: searchVal });
+    if (urlState.customerId) data = data.filter((e) => e.customerId === urlState.customerId);
+    if (activeFilter === 'all') return data;
+    if (activeFilter === 'awaiting') {
+      return data.filter((e) => ARS.Pages.matchesStatusFilter(e.status, 'awaiting', 'estimates'));
+    }
+    return data.filter((e) => ARS.Pages.matchesStatusFilter(e.status, activeFilter, 'estimates'));
+  }
 
   function renderKpis(all) {
     const pending = all.filter(e => e.status === 'Pending' || e.status === 'Sent');
@@ -138,17 +148,15 @@
   }
 
   function renderTable() {
-    const filters = { q: searchVal };
-    if (activeFilter !== 'all') filters.status = activeFilter;
-    const data = ARS.Data.listEstimates(filters);
+    const data = getFilteredEstimates();
     const all = ARS.Data.listEstimates();
     renderKpis(all);
     document.getElementById('estCount').textContent = `${data.length} estimate${data.length !== 1 ? 's' : ''}`;
     document.getElementById('estTable').innerHTML = data.length ? data.map(e => `
-      <tr>
-        <td class="td-mono td-bold">${e.id}</td>
+      <tr data-row-id="${e.id}" style="cursor:pointer">
+        <td class="td-mono td-bold">${ARS.Pages.entityLink(e.id, `/app/estimate-detail.html?id=${e.id}`)}</td>
         <td class="td-muted">${e.date}</td>
-        <td class="td-primary">${e.customerName}</td>
+        <td class="td-primary">${ARS.Pages.entityLink(e.customerName, e.customerId ? `/app/customer-detail.html?id=${e.customerId}` : '')}</td>
         <td class="td-muted" style="font-size:.76rem">${e.truckLabel || '—'}</td>
         <td class="td-wrap" style="font-size:.8rem;color:var(--steel)">${e.desc}</td>
         <td style="text-align:right">${fmt$(e.labor)}</td>
@@ -165,52 +173,96 @@
           ` : ''}
         </td>
       </tr>
-    `).join('') : `<tr><td colspan="10"><div class="empty-state"><div class="empty-state__icon"><i class="fas fa-file-alt"></i></div><div class="empty-state__title">No estimates found</div></div></td></tr>`;
+    `).join('') : ARS.Pages.tablePlaceholder(10, 'No estimates found', 'fa-file-alt');
   }
 
-  window.sendEst = (id) => {
+  window.sendEst = async (id) => {
     if (!ARS.can('estimates.send')) return showToast('Permission denied', 'error');
-    ARS.Data.updateEstimate(id, { status: 'Sent' });
-    renderTable();
-    showToast('Estimate sent to customer', 'info');
+    try {
+      await ARS.Data.updateEstimate(id, { status: 'Sent' });
+      renderTable();
+      showToast('Estimate marked as Sent', 'success');
+    } catch (e) {
+      showToast(e.message, 'error');
+    }
   };
 
-  window.approveEst = (id) => {
+  window.approveEst = async (id) => {
     if (!ARS.can('estimates.send')) return showToast('Permission denied', 'error');
-    ARS.Data.updateEstimate(id, { status: 'Approved' });
-    renderTable();
-    showToast('Estimate approved', 'success');
+    try {
+      await ARS.Data.updateEstimate(id, { status: 'Approved' });
+      renderTable();
+      showToast('Estimate approved', 'success');
+    } catch (e) {
+      showToast(e.message, 'error');
+    }
   };
 
-  window.declineEst = (id) => {
+  window.declineEst = async (id) => {
     if (!ARS.can('estimates.send')) return showToast('Permission denied', 'error');
-    ARS.Data.updateEstimate(id, { status: 'Declined' });
-    renderTable();
-    showToast('Estimate declined', 'warning');
+    const ok = await ARS.Pages.confirmAsync({
+      title: 'Decline estimate',
+      message: `Decline ${id}? This marks the estimate as Declined.`,
+      okLabel: 'Decline',
+    });
+    if (!ok) return;
+    try {
+      await ARS.Data.updateEstimate(id, { status: 'Declined' });
+      renderTable();
+      showToast('Estimate declined', 'warning');
+    } catch (e) {
+      showToast(e.message, 'error');
+    }
   };
 
   window.convertEst = async (id) => {
     try {
       const wo = await ARS.Data.convertEstimateToWO(id);
       renderTable();
-      showToast(`Work order ${wo.id} created`, 'success');
+      ARS.Pages.successWithView({
+        title: 'Work order created',
+        message: `Estimate converted to ${wo.id}.`,
+        href: `/app/work-order-detail.html?id=${wo.id}`,
+      });
     } catch (e) {
       showToast(e.message, 'error');
     }
   };
 
   ARS.Pages.waitReady(() => {
+    urlState = ARS.Pages.applyListQuery({ tabsId: 'estFilterTabs', searchId: 'estSearch' });
+    activeFilter = urlState.filter;
+    searchVal = urlState.q || '';
     const custSel = document.getElementById('estCustomer');
     const truckSel = document.getElementById('estTruck');
-    ARS.Pages.populateCustomerSelect(custSel);
+    ARS.Pages.populateCustomerSelect(custSel, urlState.customerId || '');
+    if (urlState.customerId) ARS.Pages.populateTruckSelect(truckSel, urlState.customerId, urlState.truckId || '');
     custSel.addEventListener('change', () => ARS.Pages.populateTruckSelect(truckSel, custSel.value));
+    ARS.Pages.openModalIfRequested('createEstModal');
     renderTable();
+    ARS.Pages.bindKpiFilter('kpiEstTotal', '/app/estimates.html');
+    ARS.Pages.bindKpiFilter('kpiEstPending', '/app/estimates.html?status=awaiting');
+    ARS.Pages.bindKpiFilter('kpiEstApproved', '/app/estimates.html?status=Approved');
+    ARS.Pages.bindKpiFilter('kpiEstValue', '/app/estimates.html?status=awaiting');
+    document.getElementById('estTable')?.addEventListener('click', (e) => {
+      if (e.target.closest('a,button')) return;
+      const tr = e.target.closest('tr[data-row-id]');
+      if (tr) window.location.href = ARS.Pages.appHref(`/app/estimate-detail.html?id=${tr.dataset.rowId}`);
+    });
     ARS.Pages.bindFilters('estFilterTabs', 'estSearch', 'estCount', ({ filter, q }) => {
       if (filter !== undefined) activeFilter = filter;
       if (q !== undefined) searchVal = q;
       renderTable();
     });
     document.addEventListener('ars:data-changed', renderTable);
+
+    document.getElementById('estExportBtn')?.addEventListener('click', () => {
+      const rows = ARS.Data.listEstimates().map(e =>
+        [e.id, e.date, e.customerName, e.truckLabel, e.desc, e.labor, e.parts, e.total, e.status, e.notes || '']
+      );
+      ARS.exportCSV('estimates.csv', ['ID','Date','Customer','Truck','Description','Labor','Parts','Total','Status','Notes'], rows);
+      showToast('Estimates exported', 'success');
+    });
 
     document.getElementById('saveEstBtn')?.addEventListener('click', async () => {
       if (!ARS.can('estimates.create')) return showToast('Permission denied', 'error');
@@ -221,11 +273,12 @@
       const custOpt = custSel.selectedOptions[0];
       const truckOpt = truckSel.selectedOptions[0];
       try {
-        await ARS.Data.createEstimate({
+        const est = await ARS.Data.createEstimate({
           customerId,
           customerName: custOpt?.dataset.name || custOpt?.textContent,
           truckLabel: truckOpt?.dataset.label || truckOpt?.textContent,
           desc,
+          notes: document.getElementById('estNotes')?.value.trim() || '',
           labor: document.getElementById('estLabor').value,
           parts: document.getElementById('estParts').value,
         });
@@ -235,7 +288,11 @@
         document.getElementById('estParts').value = '';
         document.getElementById('estNotes').value = '';
         renderTable();
-        showToast('Estimate created and saved!', 'success');
+        ARS.Pages.successWithView({
+          title: 'Estimate created',
+          message: `${est.id} has been saved.`,
+          href: `/app/estimate-detail.html?id=${est.id}`,
+        });
       } catch (e) {
         showToast(e.message, 'error');
       }

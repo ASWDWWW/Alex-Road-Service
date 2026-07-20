@@ -6,7 +6,7 @@
   <link rel="icon" href="/favicon.ico" sizes="any">
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <title>Invoices | Alex Road Service Ops</title>
-  <link rel="stylesheet" href="/app/css/app.css">
+  <link rel="stylesheet" href="/app/css/app.css?v=20260720w">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
 </head>
 <body class="app-body">
@@ -36,7 +36,7 @@
       </div>
       <div class="kpi-card">
         <div class="kpi-card__row">
-          <div><div class="kpi-card__label">Paid</div><div class="kpi-card__value green" id="kpiInvPaid">$0</div></div>
+          <div><div class="kpi-card__label">Collected</div><div class="kpi-card__value green" id="kpiInvPaid">$0</div></div>
           <div class="kpi-card__icon green"><i class="fas fa-check-circle"></i></div>
         </div>
       </div>
@@ -61,7 +61,7 @@
         <button class="filter-tab" data-filter="Sent">Sent</button>
         <button class="filter-tab" data-filter="Paid">Paid</button>
         <button class="filter-tab" data-filter="Overdue">Overdue</button>
-        <button class="filter-tab" data-filter="Draft">Draft</button>
+        <button class="filter-tab" data-filter="Partially Paid">Partially Paid</button>
       </div>
       <div class="filter-search">
         <i class="fas fa-search"></i>
@@ -79,7 +79,7 @@
             <th>Work Order</th><th style="text-align:right">Total</th><th>Status</th><th>Actions</th>
           </tr>
         </thead>
-        <tbody id="invTable"></tbody>
+        <tbody id="invTable"><tr><td colspan="8"><div class="loading-state"><div class="loading-state__spinner"></div><div class="loading-state__text">Loading…</div></div></td></tr></tbody>
       </table>
     </div>
 
@@ -126,54 +126,48 @@
   </div>
 </div>
 
-<script src="/app/js/utils.js"></script>
-<script src="/app/js/demo-mode.js"></script>
-<script src="/app/js/data-store.js"></script>
-<script src="/app/js/auth.js"></script>
-<script src="/app/js/data-service.js"></script>
-<script src="/app/js/documents.js"></script>
-<script src="/app/js/page-scripts.js"></script>
-<script src="/app/js/app-components.js"></script>
+<script src="/app/js/utils.js?v=20260720w"></script>
+<script src="/app/js/demo-mode.js?v=20260720w"></script>
+<script src="/app/js/data-store.js?v=20260720w"></script>
+<script src="/app/js/auth.js?v=20260720w"></script>
+<script src="/app/js/data-service.js?v=20260720w"></script>
+<script src="/app/js/documents.js?v=20260720w"></script>
+<script src="/app/js/page-scripts.js?v=20260720w"></script>
+<script src="/app/js/app-components.js?v=20260720w"></script>
 <script>
-  let activeFilter = 'all', searchVal = '';
+  let activeFilter = 'all', searchVal = '', urlState = {};
+
+  function getFilteredInvoices() {
+    let data = ARS.Data.listInvoices({ q: searchVal });
+    if (activeFilter === 'all') return data;
+    if (activeFilter === 'unpaid') {
+      return data.filter((inv) => ARS.Pages.matchesStatusFilter(inv.status, 'unpaid', 'invoices'));
+    }
+    return data.filter((inv) => ARS.Pages.matchesStatusFilter(inv.status, activeFilter, 'invoices'));
+  }
 
   function renderKpis() {
-    ARS.Data.refreshOverdueInvoices();
-    const kpis = ARS.Data.getDashboardKPIs();
-    const invoices = ARS.Data.listInvoices();
-    const now = new Date();
-    const mtdStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    const mtdInvoices = invoices.filter(inv => new Date(inv.createdAt || inv.date) >= mtdStart);
-    const mtdTotal = mtdInvoices.reduce((s, inv) => s + inv.total, 0);
-    const paidTotal = invoices.filter(inv => inv.status === 'Paid').reduce((s, inv) => s + inv.total, 0);
-    const awaiting = invoices
-      .filter(inv => ['Sent', 'Partially Paid'].includes(inv.status))
-      .reduce((s, inv) => s + inv.balance, 0);
-    const overdueTotal = invoices
-      .filter(inv => inv.status === 'Overdue')
-      .reduce((s, inv) => s + inv.balance, 0);
-    document.getElementById('kpiInvMTD').textContent = fmt$(mtdTotal);
-    document.getElementById('kpiInvPaid').textContent = fmt$(paidTotal);
-    document.getElementById('kpiInvAwaiting').textContent = fmt$(awaiting);
-    document.getElementById('kpiInvOverdue').textContent = fmt$(overdueTotal);
+    const k = ARS.Data.getInvoiceKPIs();
+    document.getElementById('kpiInvMTD').textContent = fmt$(k.invoicedMTD);
+    document.getElementById('kpiInvPaid').textContent = fmt$(k.collectedTotal);
+    document.getElementById('kpiInvAwaiting').textContent = fmt$(k.awaiting);
+    document.getElementById('kpiInvOverdue').textContent = fmt$(k.overdueTotal);
   }
 
   function renderTable() {
     renderKpis();
-    const filters = { q: searchVal };
-    if (activeFilter !== 'all') filters.status = activeFilter;
-    const data = ARS.Data.listInvoices(filters);
+    const data = getFilteredInvoices();
     document.getElementById('invCount').textContent = `${data.length} invoice${data.length !== 1 ? 's' : ''}`;
     const canPay = ARS.can('payments.record');
     document.getElementById('invTable').innerHTML = data.length ? data.map(inv => {
       const isOverdue = inv.status === 'Overdue';
       return `
-      <tr style="${isOverdue ? 'background:rgba(229,31,43,.025)' : ''}">
-        <td class="td-mono td-bold"><a href="/app/invoice-detail.html?id=${inv.id}" style="color:inherit;text-decoration:none">${inv.id}</a></td>
+      <tr data-row-id="${inv.id}" style="${isOverdue ? 'background:rgba(229,31,43,.025)' : ''};cursor:pointer">
+        <td class="td-mono td-bold">${ARS.Pages.entityLink(inv.id, `/app/invoice-detail.html?id=${inv.id}`)}</td>
         <td class="td-muted">${inv.date}</td>
         <td class="${isOverdue ? 'td-red' : 'td-muted'}">${inv.due}${isOverdue ? ' <i class="fas fa-exclamation-triangle" style="font-size:.7rem;margin-left:4px"></i>' : ''}</td>
-        <td class="td-primary">${inv.customerName}</td>
-        <td class="td-mono td-muted">${inv.workOrderId || '—'}</td>
+        <td class="td-primary">${ARS.Pages.entityLink(inv.customerName, inv.customerId ? `/app/customer-detail.html?id=${inv.customerId}` : '')}</td>
+        <td class="td-mono td-muted">${inv.workOrderId ? ARS.Pages.entityLink(inv.workOrderId, `/app/work-order-detail.html?id=${inv.workOrderId}`) : '—'}</td>
         <td style="text-align:right;font-weight:700">${fmt$(inv.total)}</td>
         <td>${chip(inv.status)}</td>
         <td class="td-actions">
@@ -181,7 +175,7 @@
           ${inv.status !== 'Paid' && inv.status !== 'Written Off' && canPay ? `<button class="btn btn--primary btn--sm" onclick="openPayModal('${inv.id}')"><i class="fab fa-stripe"></i> Pay</button>` : inv.status === 'Paid' ? `<span style="font-size:.78rem;color:#059669;font-weight:600"><i class="fas fa-check"></i> Paid</span>` : ''}
         </td>
       </tr>`;
-    }).join('') : `<tr><td colspan="8"><div class="empty-state"><div class="empty-state__icon"><i class="fas fa-file-invoice-dollar"></i></div><div class="empty-state__title">No invoices found</div></div></td></tr>`;
+    }).join('') : ARS.Pages.tablePlaceholder(8, 'No invoices found', 'fa-file-invoice-dollar');
   }
 
   window.openPayModal = (invoiceId) => {
@@ -202,9 +196,20 @@
   }
 
   ARS.Pages.waitReady(() => {
+    urlState = ARS.Pages.applyListQuery({ tabsId: 'invFilterTabs', searchId: 'invSearch' });
+    activeFilter = urlState.filter;
+    searchVal = urlState.q || '';
     populateWoSelect();
     if (!ARS.can('invoices.create')) document.getElementById('newInvBtn')?.remove();
+    ARS.Pages.openModalIfRequested('newInvModal');
     renderTable();
+    ARS.Pages.bindKpiFilter('kpiInvAwaiting', '/app/invoices.html?status=unpaid');
+    ARS.Pages.bindKpiFilter('kpiInvOverdue', '/app/invoices.html?status=Overdue');
+    document.getElementById('invTable')?.addEventListener('click', (e) => {
+      if (e.target.closest('a,button')) return;
+      const tr = e.target.closest('tr[data-row-id]');
+      if (tr) window.location.href = ARS.Pages.appHref(`/app/invoice-detail.html?id=${tr.dataset.rowId}`);
+    });
     ARS.Pages.bindFilters('invFilterTabs', 'invSearch', 'invCount', ({ filter, q }) => {
       if (filter !== undefined) activeFilter = filter;
       if (q !== undefined) searchVal = q;
@@ -226,7 +231,11 @@
         closeModal('newInvModal');
         populateWoSelect();
         renderTable();
-        showToast(`Invoice ${inv.id} created`, 'success');
+        ARS.Pages.successWithView({
+          title: 'Invoice created',
+          message: `${inv.id} has been generated.`,
+          href: `/app/invoice-detail.html?id=${inv.id}`,
+        });
       } catch (e) { showToast(e.message, 'error'); }
     });
 

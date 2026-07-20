@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <title>Schedule | Alex Road Service Ops</title>
+  <link rel="stylesheet" href="/app/css/app.css?v=20260720w">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+</head>
+<body class="app-body">
+<div id="sidebar-placeholder"></div>
+<main class="app-main">
+  <div id="topbar-placeholder" data-title="Schedule"></div>
+  <div class="app-content">
+    <div class="page-header">
+      <div>
+        <div class="page-header__title">Schedule</div>
+        <div class="page-header__sub" id="scheduleSub">Jobs, meetings, lunch, and time-off</div>
+      </div>
+      <div class="page-header__actions" style="display:flex;gap:8px;flex-wrap:wrap">
+        <select class="form-select" id="scheduleEmployeeFilter" style="min-width:200px"></select>
+        <button class="btn btn--secondary" id="scheduleTodayBtn"><i class="fas fa-calendar-day"></i> Today</button>
+        <button class="btn btn--primary" id="scheduleAddBtn"><i class="fas fa-plus"></i> Add block</button>
+      </div>
+    </div>
+
+    <div class="cal-shell app-card">
+      <div class="cal-toolbar">
+        <button type="button" class="btn btn--ghost btn--icon" id="calPrev" title="Previous month"><i class="fas fa-chevron-left"></i></button>
+        <div class="cal-toolbar__title" id="calMonthLabel">—</div>
+        <button type="button" class="btn btn--ghost btn--icon" id="calNext" title="Next month"><i class="fas fa-chevron-right"></i></button>
+      </div>
+      <div class="cal-grid-head">
+        <div>Sun</div><div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div>
+      </div>
+      <div class="cal-grid" id="calGrid"></div>
+    </div>
+
+    <div class="cal-day-panel app-card" id="calDayPanel" style="margin-top:16px">
+      <div class="app-card__header">
+        <div class="app-card__title" id="calDayTitle">Select a day</div>
+        <button class="btn btn--secondary btn--sm" id="calDayAddBtn"><i class="fas fa-plus"></i> Block</button>
+      </div>
+      <div class="app-card__body" id="calDayBody">
+        <div class="td-muted" style="font-size:.88rem">Click a day on the calendar to see work orders and schedule blocks.</div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<!-- Add / Edit block -->
+<div class="modal-overlay" id="scheduleBlockModal">
+  <div class="modal" style="max-width:520px">
+    <div class="modal__header">
+      <div class="modal__title" id="scheduleBlockModalTitle">Add schedule block</div>
+      <button class="modal__close" data-close-modal><i class="fas fa-times"></i></button>
+    </div>
+    <div class="modal__body">
+      <input type="hidden" id="sbId">
+      <div class="form-row"><label class="form-label">Title *</label><input class="form-input" id="sbTitle" placeholder="e.g. Team meeting" maxlength="80"></div>
+      <div class="form-row-2">
+        <div class="form-row"><label class="form-label">Type</label>
+          <select class="form-select" id="sbType"></select>
+        </div>
+        <div class="form-row"><label class="form-label">Color</label><input class="form-input" id="sbColor" type="color" value="#2563eb" style="padding:4px;height:40px"></div>
+      </div>
+      <div class="form-row-2">
+        <div class="form-row"><label class="form-label">Start *</label><input class="form-input" id="sbStart" type="datetime-local"></div>
+        <div class="form-row"><label class="form-label">End *</label><input class="form-input" id="sbEnd" type="datetime-local"></div>
+      </div>
+      <div class="form-row"><label style="display:flex;align-items:center;gap:8px;font-size:.88rem"><input type="checkbox" id="sbAllDay"> All-day</label></div>
+      <div class="form-row"><label class="form-label">Notes</label><textarea class="form-textarea" id="sbNotes" rows="2" placeholder="Optional details…"></textarea></div>
+
+      <div id="sbAudienceWrap">
+        <div class="form-row"><label class="form-label">Assign to</label>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+            <label style="display:flex;align-items:center;gap:6px;font-size:.85rem"><input type="radio" name="sbTarget" value="self" id="sbTargetSelf"> Myself only</label>
+            <label style="display:flex;align-items:center;gap:6px;font-size:.85rem" id="sbTargetAllLabel"><input type="radio" name="sbTarget" value="all" id="sbTargetAll"> All active staff</label>
+            <label style="display:flex;align-items:center;gap:6px;font-size:.85rem" id="sbTargetSelectLabel"><input type="radio" name="sbTarget" value="selected" id="sbTargetSelected" checked> Selected employees</label>
+          </div>
+          <input class="form-input" id="sbEmpSearch" placeholder="Search staff…" style="margin-bottom:8px">
+          <div class="tech-picker" id="sbEmpPicker" style="max-height:200px"></div>
+        </div>
+      </div>
+    </div>
+    <div class="modal__footer" style="justify-content:space-between">
+      <button class="btn btn--danger btn--sm" id="sbDeleteBtn" type="button" hidden><i class="fas fa-trash"></i> Delete</button>
+      <div style="display:flex;gap:8px;margin-left:auto">
+        <button class="btn btn--secondary" data-close-modal>Cancel</button>
+        <button class="btn btn--primary" id="sbSaveBtn"><i class="fas fa-check"></i> Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="/app/js/utils.js?v=20260720w"></script>
+<script src="/app/js/demo-mode.js?v=20260720w"></script>
+<script src="/app/js/data-store.js?v=20260720w"></script>
+<script src="/app/js/auth.js?v=20260720w"></script>
+<script src="/app/js/data-service.js?v=20260720w"></script>
+<script src="/app/js/page-scripts.js?v=20260720w"></script>
+<script src="/app/js/app-components.js?v=20260720w"></script>
+<script>
+  let viewYear, viewMonth, selectedDate = null, editingId = null;
+
+  function esc(s) {
+    return String(s ?? '').replace(/[&<>"']/g, (c) => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+    }[c]));
+  }
+
+  function meUid() {
+    return ARS.Auth.getUser()?.uid || '';
+  }
+
+  function canManage() {
+    return ARS.can('schedule.manage');
+  }
+
+  function filterEmployeeId() {
+    const v = document.getElementById('scheduleEmployeeFilter')?.value || '';
+    if (!canManage()) return meUid();
+    return v || null;
+  }
+
+  function toLocalInput(iso) {
+    const d = new Date(iso);
+    if (isNaN(d)) return '';
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  }
+
+  function staffList() {
+    if (ARS.Data?.listEmployees) {
+      return ARS.Data.listEmployees()
+        .filter((e) => e.active !== false && e.status !== 'Archived' && e.status !== 'Terminated')
+        .map((e) => ({ uid: e.uid, name: e.name, role: e.role }));
+    }
+    return (ARS.Messaging?.getAllRoster?.() || []).filter((r) => r.active !== false);
+  }
+
+  function populateEmployeeFilter() {
+    const sel = document.getElementById('scheduleEmployeeFilter');
+    if (!sel) return;
+    const params = new URLSearchParams(location.search);
+    const pre = params.get('employeeId') || '';
+    if (!canManage()) {
+      sel.innerHTML = `<option value="${esc(meUid())}">My schedule</option>`;
+      sel.value = meUid();
+      sel.disabled = true;
+      return;
+    }
+    const staff = staffList();
+    sel.innerHTML = `<option value="">All staff</option>` +
+      staff.map((e) => `<option value="${esc(e.uid)}">${esc(e.name)}</option>`).join('');
+    if (pre && [...sel.options].some((o) => o.value === pre)) sel.value = pre;
+  }
+
+  function renderEmpPicker(selected = []) {
+    const el = document.getElementById('sbEmpPicker');
+    const q = (document.getElementById('sbEmpSearch')?.value || '').toLowerCase();
+    const selectedSet = new Set(selected);
+    let staff = staffList();
+    if (q) staff = staff.filter((e) => (e.name || '').toLowerCase().includes(q) || (e.email || '').toLowerCase().includes(q));
+    el.innerHTML = staff.map((e) => `
+      <label class="tech-picker__row">
+        <input type="checkbox" value="${esc(e.uid)}" ${selectedSet.has(e.uid) ? 'checked' : ''}>
+        <span>${esc(e.name)} <span class="td-muted" style="font-size:.75rem">· ${esc(ARS.ROLE_LABELS[e.role] || e.role || '')}</span></span>
+      </label>
+    `).join('') || '<div class="td-muted" style="padding:10px">No staff found</div>';
+  }
+
+  function audienceMode() {
+    return document.querySelector('input[name="sbTarget"]:checked')?.value || 'selected';
+  }
+
+  function syncAudienceUi() {
+    const manage = canManage();
+    document.getElementById('sbTargetAllLabel').style.display = manage ? '' : 'none';
+    document.getElementById('sbTargetSelectLabel').style.display = manage ? '' : 'none';
+    const mode = audienceMode();
+    const picker = document.getElementById('sbEmpPicker');
+    const search = document.getElementById('sbEmpSearch');
+    const showPicker = manage && mode === 'selected';
+    picker.style.display = showPicker ? '' : 'none';
+    search.style.display = showPicker ? '' : 'none';
+    if (!manage) {
+      document.getElementById('sbTargetSelf').checked = true;
+    }
+  }
+
+  function openBlockModal(preset = {}) {
+    editingId = preset.id || null;
+    document.getElementById('scheduleBlockModalTitle').textContent = editingId ? 'Edit schedule block' : 'Add schedule block';
+    document.getElementById('sbId').value = editingId || '';
+    document.getElementById('sbTitle').value = preset.title || '';
+    document.getElementById('sbType').value = preset.type || 'meeting';
+    document.getElementById('sbColor').value = preset.color || ARS.Schedule.typeMeta(preset.type || 'meeting').color;
+    document.getElementById('sbNotes').value = preset.notes || '';
+    document.getElementById('sbAllDay').checked = !!preset.allDay;
+
+    const start = preset.startAt ? new Date(preset.startAt) : (selectedDate ? new Date(selectedDate) : new Date());
+    if (!preset.startAt) { start.setHours(12, 0, 0, 0); }
+    const end = preset.endAt ? new Date(preset.endAt) : new Date(start.getTime() + 60 * 60 * 1000);
+    document.getElementById('sbStart').value = toLocalInput(start.toISOString());
+    document.getElementById('sbEnd').value = toLocalInput(end.toISOString());
+
+    const manage = canManage();
+    const ids = preset.employeeIds || (filterEmployeeId() ? [filterEmployeeId()] : [meUid()]);
+    if (!manage) {
+      document.getElementById('sbTargetSelf').checked = true;
+    } else if (preset.targetAll) {
+      document.getElementById('sbTargetAll').checked = true;
+    } else if (ids.length === 1 && ids[0] === meUid() && !editingId) {
+      document.getElementById('sbTargetSelf').checked = true;
+    } else {
+      document.getElementById('sbTargetSelected').checked = true;
+    }
+    renderEmpPicker(ids);
+    syncAudienceUi();
+
+    const del = document.getElementById('sbDeleteBtn');
+    del.hidden = !editingId || (!manage && preset.createdBy !== meUid());
+    openModal('scheduleBlockModal');
+  }
+
+  async function saveBlock() {
+    const title = document.getElementById('sbTitle').value.trim();
+    const type = document.getElementById('sbType').value;
+    const color = document.getElementById('sbColor').value;
+    const notes = document.getElementById('sbNotes').value.trim();
+    const allDay = document.getElementById('sbAllDay').checked;
+    let startAt = document.getElementById('sbStart').value;
+    let endAt = document.getElementById('sbEnd').value;
+    if (!title || !startAt || !endAt) return showToast('Title, start, and end are required', 'error');
+
+    if (allDay) {
+      const s = new Date(startAt);
+      s.setHours(0, 0, 0, 0);
+      const e = new Date(endAt);
+      e.setHours(23, 59, 0, 0);
+      startAt = s.toISOString();
+      endAt = e.toISOString();
+    } else {
+      startAt = new Date(startAt).toISOString();
+      endAt = new Date(endAt).toISOString();
+    }
+
+    const mode = audienceMode();
+    let employeeIds = [];
+    let targetAll = false;
+    if (mode === 'self' || !canManage()) {
+      employeeIds = [meUid()];
+    } else if (mode === 'all') {
+      targetAll = true;
+      employeeIds = ARS.Schedule.activeEmployeeIds();
+    } else {
+      employeeIds = [...document.querySelectorAll('#sbEmpPicker input:checked')].map((i) => i.value);
+    }
+
+    const btn = document.getElementById('sbSaveBtn');
+    btn.disabled = true;
+    try {
+      const payload = { title, type, color, notes, allDay, startAt, endAt, employeeIds, targetAll };
+      if (editingId) await ARS.Schedule.updateBlock(editingId, payload);
+      else await ARS.Schedule.createBlock(payload);
+      closeModal('scheduleBlockModal');
+      showToast(editingId ? 'Block updated' : 'Block added', 'success');
+      await reloadMonth();
+      if (selectedDate) renderDay(selectedDate);
+    } catch (e) {
+      showToast(e.message || 'Could not save block', 'error');
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  async function reloadMonth() {
+    await ARS.Schedule.listenMonth(viewYear, viewMonth, filterEmployeeId());
+    renderMonth();
+  }
+
+  function renderMonth() {
+    const label = new Date(viewYear, viewMonth, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+    document.getElementById('calMonthLabel').textContent = label;
+    const { gridStart, gridEnd } = ARS.Schedule.monthBounds(viewYear, viewMonth);
+    const empId = filterEmployeeId();
+    const grid = document.getElementById('calGrid');
+    const todayKey = ARS.toInputDate(new Date());
+    const cells = [];
+    for (let d = new Date(gridStart); d <= gridEnd; d.setDate(d.getDate() + 1)) {
+      const day = new Date(d);
+      const key = ARS.toInputDate(day);
+      const inMonth = day.getMonth() === viewMonth;
+      const events = ARS.Schedule.eventsForDay(day, empId);
+      const isSelected = selectedDate === key;
+      cells.push(`
+        <button type="button" class="cal-cell ${inMonth ? '' : 'is-out'} ${key === todayKey ? 'is-today' : ''} ${isSelected ? 'is-selected' : ''}" data-date="${key}">
+          <div class="cal-cell__day">${day.getDate()}</div>
+          <div class="cal-cell__events">
+            ${events.slice(0, 3).map((e) => `
+              <div class="cal-chip" style="--chip:${esc(e.color || '#64635D')}" title="${esc(e.title)}">${esc(e.title)}</div>
+            `).join('')}
+            ${events.length > 3 ? `<div class="cal-more">+${events.length - 3} more</div>` : ''}
+          </div>
+        </button>
+      `);
+    }
+    grid.innerHTML = cells.join('');
+    grid.querySelectorAll('.cal-cell').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        selectedDate = btn.dataset.date;
+        renderMonth();
+        renderDay(selectedDate);
+      });
+    });
+  }
+
+  function fmtTimeRange(startIso, endIso, allDay) {
+    if (allDay) return 'All day';
+    const s = new Date(startIso);
+    const e = new Date(endIso);
+    const opts = { hour: 'numeric', minute: '2-digit' };
+    return `${s.toLocaleTimeString([], opts)} – ${e.toLocaleTimeString([], opts)}`;
+  }
+
+  function renderDay(dateKey) {
+    selectedDate = dateKey;
+    const d = new Date(dateKey + 'T12:00:00');
+    document.getElementById('calDayTitle').textContent = d.toLocaleDateString('en-US', {
+      weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
+    });
+    const events = ARS.Schedule.eventsForDay(d, filterEmployeeId());
+    const body = document.getElementById('calDayBody');
+    if (!events.length) {
+      body.innerHTML = '<div class="td-muted" style="font-size:.88rem">Nothing scheduled. Add a block or assign a work order for this day.</div>';
+      return;
+    }
+    body.innerHTML = events.map((e) => {
+      const isWo = e.source === 'workOrder';
+      const names = e.employeeNames
+        ? Object.values(e.employeeNames).join(', ')
+        : (e.employeeIds || []).map((id) => ARS.Data.getEmployee?.(id)?.name || id).filter(Boolean).join(', ');
+      return `
+        <div class="cal-event" style="border-left-color:${esc(e.color || '#64635D')}">
+          <div class="cal-event__top">
+            <div>
+              <div class="cal-event__title">${esc(e.title)}</div>
+              <div class="cal-event__meta">${esc(fmtTimeRange(e.startAt, e.endAt, e.allDay))}
+                · ${esc(isWo ? (e.status || 'Work order') : (ARS.Schedule.typeMeta(e.type).label))}
+                ${names ? ` · ${esc(names)}` : ''}
+              </div>
+              ${e.notes || e.desc ? `<div class="cal-event__notes">${esc(e.notes || e.desc)}</div>` : ''}
+            </div>
+            <div style="display:flex;gap:6px;flex-shrink:0">
+              ${isWo ? `<a class="btn btn--ghost btn--sm" href="${ARS.Pages.appHref(`/app/work-order-detail.html?id=${encodeURIComponent(e.workOrderId)}`)}">Open WO</a>` : ''}
+              ${!isWo && (canManage() || e.createdBy === meUid()) ? `<button type="button" class="btn btn--secondary btn--sm" data-edit-block="${esc(e.id)}">Edit</button>` : ''}
+            </div>
+          </div>
+        </div>`;
+    }).join('');
+
+    body.querySelectorAll('[data-edit-block]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const block = ARS.Schedule.getBlocks().find((b) => b.id === btn.dataset.editBlock);
+        if (block) openBlockModal(block);
+      });
+    });
+  }
+
+  ARS.Pages.waitReady(async () => {
+    if (!ARS.can('schedule.view')) {
+      showToast('Permission denied', 'error');
+      setTimeout(() => { location.href = '/app/dashboard.html'; }, 500);
+      return;
+    }
+
+    const now = new Date();
+    viewYear = now.getFullYear();
+    viewMonth = now.getMonth();
+    selectedDate = ARS.toInputDate(now);
+
+    document.getElementById('sbType').innerHTML = ARS.SCHEDULE_TYPES
+      .map((t) => `<option value="${t.id}">${t.label}</option>`).join('');
+
+    populateEmployeeFilter();
+    const empName = filterEmployeeId()
+      ? (ARS.Data.getEmployee?.(filterEmployeeId())?.name || 'Employee')
+      : 'All staff';
+    document.getElementById('scheduleSub').textContent = canManage()
+      ? `Viewing: ${empName} · Managers can push blocks to all or selected staff`
+      : 'Your jobs, meetings, and time-off';
+
+    await reloadMonth();
+    renderDay(selectedDate);
+
+    document.getElementById('calPrev')?.addEventListener('click', async () => {
+      viewMonth -= 1;
+      if (viewMonth < 0) { viewMonth = 11; viewYear -= 1; }
+      await reloadMonth();
+    });
+    document.getElementById('calNext')?.addEventListener('click', async () => {
+      viewMonth += 1;
+      if (viewMonth > 11) { viewMonth = 0; viewYear += 1; }
+      await reloadMonth();
+    });
+    document.getElementById('scheduleTodayBtn')?.addEventListener('click', async () => {
+      const t = new Date();
+      viewYear = t.getFullYear();
+      viewMonth = t.getMonth();
+      selectedDate = ARS.toInputDate(t);
+      await reloadMonth();
+      renderDay(selectedDate);
+    });
+    document.getElementById('scheduleEmployeeFilter')?.addEventListener('change', async () => {
+      const empName = filterEmployeeId()
+        ? (ARS.Data.getEmployee?.(filterEmployeeId())?.name || 'Employee')
+        : 'All staff';
+      document.getElementById('scheduleSub').textContent = canManage()
+        ? `Viewing: ${empName} · Managers can push blocks to all or selected staff`
+        : 'Your jobs, meetings, and time-off';
+      await reloadMonth();
+      if (selectedDate) renderDay(selectedDate);
+    });
+    document.getElementById('scheduleAddBtn')?.addEventListener('click', () => openBlockModal({}));
+    document.getElementById('calDayAddBtn')?.addEventListener('click', () => openBlockModal({}));
+    document.getElementById('sbSaveBtn')?.addEventListener('click', saveBlock);
+    document.getElementById('sbType')?.addEventListener('change', (e) => {
+      document.getElementById('sbColor').value = ARS.Schedule.typeMeta(e.target.value).color;
+    });
+    document.getElementById('sbEmpSearch')?.addEventListener('input', () => {
+      const selected = [...document.querySelectorAll('#sbEmpPicker input:checked')].map((i) => i.value);
+      renderEmpPicker(selected);
+    });
+    document.querySelectorAll('input[name="sbTarget"]').forEach((r) => {
+      r.addEventListener('change', syncAudienceUi);
+    });
+    document.getElementById('sbDeleteBtn')?.addEventListener('click', async () => {
+      if (!editingId) return;
+      const ok = await ARS.Pages.confirmAsync({
+        title: 'Delete block',
+        message: 'Remove this schedule block for all assigned employees?',
+        okLabel: 'Delete',
+      });
+      if (!ok) return;
+      try {
+        await ARS.Schedule.deleteBlock(editingId);
+        closeModal('scheduleBlockModal');
+        showToast('Block deleted', 'success');
+        await reloadMonth();
+        if (selectedDate) renderDay(selectedDate);
+      } catch (e) {
+        showToast(e.message || 'Delete failed', 'error');
+      }
+    });
+
+    document.addEventListener('ars:schedule-changed', () => {
+      renderMonth();
+      if (selectedDate) renderDay(selectedDate);
+    });
+    document.addEventListener('ars:data-changed', () => {
+      renderMonth();
+      if (selectedDate) renderDay(selectedDate);
+    });
+  });
+</script>
+</body>
+</html>

@@ -71,10 +71,12 @@ async function recordStripePayment({ invoiceId, amount, sessionId, paymentIntent
       id: payId,
       date: dateStr,
       customerName: customerName || inv.customerName || '',
+      customerId: inv.customerId || null,
       invoiceId,
       amount,
       method: 'Stripe',
       status: 'Completed',
+      refundedAmount: 0,
       stripeSessionId: sessionId,
       stripePaymentIntentId: paymentIntentId || null,
       idempotencyKey: sessionId,
@@ -111,6 +113,167 @@ async function recordStripePayment({ invoiceId, amount, sessionId, paymentIntent
   return { paymentId: payId };
 }
 
+/**
+ * Apply a refund against a stored payment + invoice.
+ * Idempotent by Stripe refund id (stripe_events + payment.stripeRefundIds).
+ * amountRefundedTotal: absolute cents/dollars already refunded on the charge (webhook).
+ * amountDelta: incremental dollars to add (callable path).
+ */
+async function applyStripeRefund({
+  paymentId,
+  paymentIntentId,
+  refundId,
+  amountDelta,
+  amountRefundedTotal,
+  reason,
+  eventId,
+  refundedBy,
+}) {
+  const eventKey = eventId || (refundId ? `refund_${refundId}` : null);
+  if (!eventKey) throw new Error('Refund event id required');
+
+  const processedRef = db.collection('stripe_events').doc(eventKey);
+  if ((await processedRef.get()).exists) return { duplicate: true };
+
+  let payRef;
+  let paySnap;
+  if (paymentId) {
+    payRef = db.collection('payments').doc(paymentId);
+    paySnap = await payRef.get();
+  } else if (paymentIntentId) {
+    const q = await db.collection('payments')
+      .where('stripePaymentIntentId', '==', paymentIntentId)
+      .limit(1)
+      .get();
+    if (q.empty) throw new Error(`Payment not found for PI ${paymentIntentId}`);
+    paySnap = q.docs[0];
+    payRef = paySnap.ref;
+    paymentId = paySnap.id;
+  } else {
+    throw new Error('paymentId or paymentIntentId required');
+  }
+
+  if (!paySnap.exists) throw new Error(`Payment ${paymentId} not found`);
+
+  const result = await db.runTransaction(async (tx) => {
+    // All reads must complete before any writes (Firestore transaction rule)
+    const processedSnap = await tx.get(processedRef);
+    if (processedSnap.exists) return { duplicate: true };
+
+    const payFresh = (await tx.get(payRef)).data();
+    if (!payFresh) throw new Error(`Payment ${paymentId} missing in transaction`);
+
+    const invRef = payFresh.invoiceId
+      ? db.collection('invoices').doc(payFresh.invoiceId)
+      : null;
+    const invSnap = invRef ? await tx.get(invRef) : null;
+
+    const refundIds = payFresh.stripeRefundIds || [];
+    if (refundId && refundIds.includes(refundId)) {
+      tx.set(processedRef, {
+        type: 'refund.duplicate',
+        paymentId,
+        refundId,
+        processedAt: FieldValue.serverTimestamp(),
+      });
+      return { duplicate: true };
+    }
+
+    const paid = Number(payFresh.amount) || 0;
+    const prevRefunded = Number(payFresh.refundedAmount) || 0;
+    let nextRefunded = prevRefunded;
+
+    if (amountRefundedTotal != null) {
+      nextRefunded = Math.max(prevRefunded, Number(amountRefundedTotal) || 0);
+    } else if (amountDelta != null) {
+      nextRefunded = prevRefunded + Number(amountDelta);
+    }
+
+    nextRefunded = Math.min(paid, Math.round(nextRefunded * 100) / 100);
+    const delta = Math.round((nextRefunded - prevRefunded) * 100) / 100;
+    if (delta <= 0.001) {
+      tx.set(processedRef, {
+        type: 'refund.noop',
+        paymentId,
+        refundId: refundId || null,
+        processedAt: FieldValue.serverTimestamp(),
+      });
+      return { duplicate: true, paymentId };
+    }
+
+    const remaining = Math.round((paid - nextRefunded) * 100) / 100;
+    const payStatus = remaining <= 0.01 ? 'Refunded' : 'Partially Refunded';
+    const nextRefundIds = refundId ? [...refundIds, refundId] : refundIds;
+
+    tx.update(payRef, {
+      refundedAmount: nextRefunded,
+      refundableAmount: remaining,
+      status: payStatus,
+      stripeRefundIds: nextRefundIds,
+      lastRefundAt: new Date().toISOString(),
+      lastRefundReason: reason || null,
+      lastRefundId: refundId || null,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+
+    if (invSnap?.exists) {
+      const inv = invSnap.data();
+      if (inv.status !== 'Written Off') {
+        const newPaid = Math.max(0, Math.round(((inv.amountPaid || 0) - delta) * 100) / 100);
+        const balance = Math.round(((inv.total || 0) - newPaid) * 100) / 100;
+        let status = inv.status;
+        if (newPaid <= 0.01) {
+          const due = inv.due ? new Date(inv.due) : null;
+          status = (due && !isNaN(due) && due < new Date()) ? 'Overdue' : 'Sent';
+        } else if (balance > 0.01) {
+          status = 'Partially Paid';
+        } else {
+          status = 'Paid';
+        }
+        tx.update(invRef, {
+          amountPaid: newPaid,
+          status,
+          updatedAt: FieldValue.serverTimestamp(),
+        });
+      }
+    }
+
+    tx.set(processedRef, {
+      type: 'refund.applied',
+      paymentId,
+      invoiceId: payFresh.invoiceId,
+      refundId: refundId || null,
+      amount: delta,
+      refundedBy: refundedBy || 'stripe_webhook',
+      processedAt: FieldValue.serverTimestamp(),
+    });
+
+    return {
+      paymentId,
+      invoiceId: payFresh.invoiceId,
+      amount: delta,
+      refundedAmount: nextRefunded,
+      status: payStatus,
+    };
+  });
+
+  if (!result?.duplicate) {
+    await db.collection('audit_log').add({
+      action: 'payment.refund',
+      entityType: 'payment',
+      entityId: result.paymentId,
+      invoiceId: result.invoiceId,
+      amount: result.amount,
+      refundId: refundId || null,
+      reason: reason || null,
+      userId: refundedBy || 'stripe_webhook',
+      at: FieldValue.serverTimestamp(),
+    });
+  }
+
+  return result;
+}
+
 async function upsertUserProfile(uid, profile) {
   await db.collection('users').doc(uid).set({
     ...profile,
@@ -122,6 +285,64 @@ async function upsertUserProfile(uid, profile) {
 
 async function setRole(uid, role) {
   await auth.setCustomUserClaims(uid, { role });
+}
+
+const SHOP_CONVERSATION_ID = 'shop_all_staff';
+
+async function upsertMessagingRoster(uid, data = {}) {
+  const status = data.status || 'Active';
+  const active = data.active !== false && status !== 'Archived' && status !== 'Terminated';
+  await db.collection('messagingRoster').doc(uid).set({
+    uid,
+    name: data.name || '',
+    email: data.email || '',
+    role: data.role || '',
+    jobTitle: data.jobTitle || '',
+    photoURL: data.photoURL || '',
+    messagingPublicKey: data.messagingPublicKey || null,
+    active,
+    status,
+    updatedAt: FieldValue.serverTimestamp(),
+  }, { merge: true });
+}
+
+async function removeMessagingRoster(uid) {
+  await db.collection('messagingRoster').doc(uid).delete().catch(() => {});
+}
+
+async function syncShopConversationParticipants() {
+  const snap = await db.collection('messagingRoster').where('active', '==', true).get();
+  const members = snap.docs.map((d) => d.data());
+  const participantIds = members.map((m) => m.uid).filter(Boolean).sort();
+  if (participantIds.length < 2) return { ok: false, reason: 'need_two_staff' };
+
+  const names = {};
+  members.forEach((m) => {
+    const n = String(m.name || '').trim();
+    names[m.uid] = n && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(n) ? n : 'Staff';
+  });
+
+  const ref = db.collection('conversations').doc(SHOP_CONVERSATION_ID);
+  const existing = await ref.get();
+  const payload = {
+    id: SHOP_CONVERSATION_ID,
+    type: 'shop',
+    title: 'Shop Channel',
+    participantIds,
+    participantNames: names,
+    updatedAt: FieldValue.serverTimestamp(),
+  };
+  if (!existing.exists) {
+    payload.createdBy = 'system';
+    payload.createdAt = FieldValue.serverTimestamp();
+    payload.lastMessageAt = FieldValue.serverTimestamp();
+    payload.lastMessagePreview = 'Welcome to shop messaging';
+    payload.lastMessageBy = 'system';
+    payload.wrappedKeys = {};
+    payload.e2ee = true;
+  }
+  await ref.set(payload, { merge: true });
+  return { ok: true, id: SHOP_CONVERSATION_ID, participantIds };
 }
 
 async function getNotifyUserIds(roles) {
@@ -285,7 +506,7 @@ exports.auditLog = onCall({ region: 'us-central1' }, async (request) => {
 
 const LEGACY_CUSTOMER_ID = /^C00[1-8]$/;
 const LEGACY_TRUCK_ID = /^T0(0[1-9]|10)$/;
-const LEGACY_NAMES = ['washex', 'james construction', 'reid trucking', 'lopez distribution', 'kim brothers'];
+const LEGACY_NAMES = ['washex', 'james construction'];
 const PURGE_COLLECTIONS = [
   'customers', 'trucks', 'workOrders', 'estimates', 'invoices',
   'payments', 'inventory', 'inventoryTransactions',
@@ -361,6 +582,404 @@ exports.setUserRole = onCall({ region: 'us-central1' }, async (request) => {
     role,
   });
   return { ok: true, uid: userRecord.uid, role };
+});
+
+const HIRABLE_ROLES = ['admin', 'office', 'technician'];
+const EMPLOYEE_STATUSES = ['Active', 'On Leave', 'Terminated', 'Archived'];
+const SELF_UPDATE_FIELDS = [
+  'phone', 'address', 'emergencyContact', 'photoURL', 'certifications', 'media',
+  'messagingPublicKey', 'messagingKeyUpdatedAt',
+];
+
+function defaultOnboarding(doneAtIso) {
+  return [
+    { id: 'account', label: 'Platform account created', done: true, doneAt: doneAtIso },
+    { id: 'i9', label: 'I-9 employment eligibility', done: false },
+    { id: 'w4', label: 'W-4 tax withholding', done: false },
+    { id: 'handbook', label: 'Employee handbook acknowledged', done: false },
+    { id: 'safety', label: 'Shop safety orientation', done: false },
+    { id: 'tools', label: 'Tools / PPE issued', done: false },
+    { id: 'access', label: 'Shop keys / access', done: false },
+    { id: 'training', label: 'Role training complete', done: false },
+  ];
+}
+
+function defaultSchedule() {
+  return {
+    mon: '7:00 AM – 3:30 PM',
+    tue: '7:00 AM – 3:30 PM',
+    wed: '7:00 AM – 3:30 PM',
+    thu: '7:00 AM – 3:30 PM',
+    fri: '7:00 AM – 3:30 PM',
+    sat: 'Off',
+    sun: 'Off',
+    notes: '',
+  };
+}
+
+/** Shared starter password for every new hire — they must change it via email link */
+const DEFAULT_HIRE_PASSWORD = process.env.DEFAULT_HIRE_PASSWORD || 'AlexRoadHire!';
+
+/** Public Web API key (same as client firebase-config) — used to trigger Firebase Auth emails */
+const FIREBASE_WEB_API_KEY =
+  process.env.FIREBASE_WEB_API_KEY || 'AIzaSyCUkj9Np2l-jiT1D0dxAxQBp9jxn1KbSFg';
+
+/**
+ * Trigger Firebase Auth's built-in password-reset email via Identity Toolkit.
+ * Admin SDK only generates links; this REST call is what actually sends the email.
+ */
+async function sendFirebasePasswordResetEmail(email) {
+  const em = String(email || '').trim().toLowerCase();
+  if (!em) throw new Error('email required');
+  const res = await fetch(
+    `https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key=${FIREBASE_WEB_API_KEY}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        requestType: 'PASSWORD_RESET',
+        email: em,
+      }),
+    },
+  );
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const msg = data?.error?.message || `sendOobCode failed (${res.status})`;
+    throw new Error(msg);
+  }
+  return data;
+}
+
+/** Create an employee: Auth user + custom claims + Firestore HR profile (admin/developer only) */
+exports.createEmployee = onCall({ region: 'us-central1' }, async (request) => {
+  assertAdminOrDev(request);
+  const callerRole = request.auth.token.role;
+  const { name, email, role, phone, jobTitle, hireDate, department } = request.data || {};
+  if (!name || !email) throw new HttpsError('invalid-argument', 'name and email required');
+  const allowedRoles = callerRole === 'developer' ? [...HIRABLE_ROLES, 'developer'] : HIRABLE_ROLES;
+  if (!role || !allowedRoles.includes(role)) {
+    throw new HttpsError('invalid-argument', `Invalid role. Allowed: ${allowedRoles.join(', ')}`);
+  }
+
+  const em = String(email).trim().toLowerCase();
+  const defaultPassword = DEFAULT_HIRE_PASSWORD;
+  let userRecord;
+  try {
+    userRecord = await auth.createUser({
+      email: em,
+      password: defaultPassword,
+      displayName: name,
+      emailVerified: false,
+    });
+  } catch (e) {
+    if (e.code === 'auth/email-already-exists') {
+      throw new HttpsError('already-exists', 'An account with this email already exists');
+    }
+    throw new HttpsError('internal', e.message || 'Could not create Auth user');
+  }
+
+  await setRole(userRecord.uid, role);
+
+  const now = new Date();
+  const nowIso = now.toISOString();
+  await db.collection('users').doc(userRecord.uid).set({
+    uid: userRecord.uid,
+    name,
+    email: em,
+    phone: phone || '',
+    role,
+    jobTitle: jobTitle || '',
+    hireDate: hireDate || '',
+    department: department || '',
+    status: 'Active',
+    employmentType: 'Full-time',
+    emergencyContact: { name: '', phone: '' },
+    address: '',
+    certifications: [],
+    schedule: defaultSchedule(),
+    onboarding: defaultOnboarding(nowIso),
+    media: [],
+    active: true,
+    archived: false,
+    mustChangePassword: true,
+    createdAt: FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
+    createdBy: request.auth.uid,
+  });
+
+  await db.collection('audit_log').add({
+    action: 'employee.create',
+    entityType: 'employee',
+    entityId: userRecord.uid,
+    userId: request.auth.uid,
+    at: FieldValue.serverTimestamp(),
+  });
+
+  await upsertMessagingRoster(userRecord.uid, {
+    name, email: em, role, jobTitle: jobTitle || '', active: true, status: 'Active',
+  });
+  await syncShopConversationParticipants().catch((e) => console.warn('shop sync:', e.message));
+
+  let passwordResetSent = false;
+  let passwordResetError = null;
+  try {
+    await sendFirebasePasswordResetEmail(em);
+    passwordResetSent = true;
+  } catch (e) {
+    passwordResetError = e.message || 'Failed to send password reset email';
+    console.warn('sendFirebasePasswordResetEmail failed:', passwordResetError);
+  }
+
+  return {
+    ok: true,
+    uid: userRecord.uid,
+    email: em,
+    defaultPassword,
+    role,
+    passwordResetSent,
+    passwordResetError,
+  };
+});
+
+/** Resend Firebase password-reset email for an employee */
+exports.sendEmployeePasswordReset = onCall({ region: 'us-central1' }, async (request) => {
+  assertAdminOrDev(request);
+  const { uid, email } = request.data || {};
+  let em = email ? String(email).trim().toLowerCase() : '';
+  if (uid) {
+    const snap = await db.collection('users').doc(uid).get();
+    if (!snap.exists) throw new HttpsError('not-found', 'Employee not found');
+    em = em || String(snap.data().email || '').trim().toLowerCase();
+  }
+  if (!em) throw new HttpsError('invalid-argument', 'uid or email required');
+  try {
+    await sendFirebasePasswordResetEmail(em);
+  } catch (e) {
+    throw new HttpsError('internal', e.message || 'Could not send password reset email');
+  }
+  await db.collection('audit_log').add({
+    action: 'employee.password_reset',
+    entityType: 'employee',
+    entityId: uid || em,
+    userId: request.auth.uid,
+    at: FieldValue.serverTimestamp(),
+  });
+  return { ok: true, email: em, passwordResetSent: true };
+});
+
+/** Archive employee: disable login, keep HR record */
+exports.archiveEmployee = onCall({ region: 'us-central1' }, async (request) => {
+  assertAdminOrDev(request);
+  const { uid } = request.data || {};
+  if (!uid) throw new HttpsError('invalid-argument', 'uid required');
+  if (uid === request.auth.uid) {
+    throw new HttpsError('failed-precondition', 'You cannot archive your own account');
+  }
+
+  const userRef = db.collection('users').doc(uid);
+  const snap = await userRef.get();
+  if (!snap.exists) throw new HttpsError('not-found', 'Employee not found');
+
+  try {
+    await auth.updateUser(uid, { disabled: true });
+  } catch (e) {
+    if (e.code !== 'auth/user-not-found') {
+      throw new HttpsError('internal', e.message || 'Could not disable Auth user');
+    }
+  }
+
+  await userRef.set({
+    status: 'Archived',
+    active: false,
+    archived: true,
+    archivedAt: FieldValue.serverTimestamp(),
+    archivedBy: request.auth.uid,
+    updatedAt: FieldValue.serverTimestamp(),
+  }, { merge: true });
+
+  await upsertMessagingRoster(uid, { ...(snap.data() || {}), status: 'Archived', active: false });
+  await syncShopConversationParticipants().catch((e) => console.warn('shop sync:', e.message));
+
+  await db.collection('audit_log').add({
+    action: 'employee.archive',
+    entityType: 'employee',
+    entityId: uid,
+    userId: request.auth.uid,
+    at: FieldValue.serverTimestamp(),
+  });
+
+  return { ok: true, uid, status: 'Archived' };
+});
+
+/** Restore archived employee */
+exports.unarchiveEmployee = onCall({ region: 'us-central1' }, async (request) => {
+  assertAdminOrDev(request);
+  const { uid } = request.data || {};
+  if (!uid) throw new HttpsError('invalid-argument', 'uid required');
+
+  const userRef = db.collection('users').doc(uid);
+  const snap = await userRef.get();
+  if (!snap.exists) throw new HttpsError('not-found', 'Employee not found');
+
+  try {
+    await auth.updateUser(uid, { disabled: false });
+  } catch (e) {
+    if (e.code !== 'auth/user-not-found') {
+      throw new HttpsError('internal', e.message || 'Could not enable Auth user');
+    }
+  }
+
+  await userRef.set({
+    status: 'Active',
+    active: true,
+    archived: false,
+    archivedAt: FieldValue.delete(),
+    archivedBy: FieldValue.delete(),
+    updatedAt: FieldValue.serverTimestamp(),
+  }, { merge: true });
+
+  await upsertMessagingRoster(uid, { ...(snap.data() || {}), status: 'Active', active: true });
+  await syncShopConversationParticipants().catch((e) => console.warn('shop sync:', e.message));
+
+  await db.collection('audit_log').add({
+    action: 'employee.unarchive',
+    entityType: 'employee',
+    entityId: uid,
+    userId: request.auth.uid,
+    at: FieldValue.serverTimestamp(),
+  });
+
+  return { ok: true, uid, status: 'Active' };
+});
+
+/** Permanently delete employee Auth account + HR profile */
+exports.deleteEmployee = onCall({ region: 'us-central1' }, async (request) => {
+  assertAdminOrDev(request);
+  const { uid } = request.data || {};
+  if (!uid) throw new HttpsError('invalid-argument', 'uid required');
+  if (uid === request.auth.uid) {
+    throw new HttpsError('failed-precondition', 'You cannot delete your own account');
+  }
+
+  const userRef = db.collection('users').doc(uid);
+  const snap = await userRef.get();
+  if (!snap.exists) throw new HttpsError('not-found', 'Employee not found');
+  const data = snap.data() || {};
+
+  try {
+    await auth.deleteUser(uid);
+  } catch (e) {
+    if (e.code !== 'auth/user-not-found') {
+      throw new HttpsError('internal', e.message || 'Could not delete Auth user');
+    }
+  }
+
+  await userRef.delete();
+  await removeMessagingRoster(uid);
+  await syncShopConversationParticipants().catch((e) => console.warn('shop sync:', e.message));
+
+  await db.collection('audit_log').add({
+    action: 'employee.delete',
+    entityType: 'employee',
+    entityId: uid,
+    userId: request.auth.uid,
+    meta: { email: data.email || '', name: data.name || '' },
+    at: FieldValue.serverTimestamp(),
+  });
+
+  return { ok: true, uid, deleted: true };
+});
+
+/** Update an employee profile: admin/developer (any field) or self (limited fields) */
+exports.updateEmployee = onCall({ region: 'us-central1' }, async (request) => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Login required');
+  const { uid, patch } = request.data || {};
+  if (!uid || !patch || typeof patch !== 'object') {
+    throw new HttpsError('invalid-argument', 'uid and patch required');
+  }
+
+  const callerRole = request.auth.token.role;
+  const isAdminOrDev = callerRole === 'admin' || callerRole === 'developer';
+  const isSelf = request.auth.uid === uid;
+  if (!isAdminOrDev && !isSelf) {
+    throw new HttpsError('permission-denied', 'Admin or developer role required');
+  }
+
+  const userRef = db.collection('users').doc(uid);
+  const snap = await userRef.get();
+  if (!snap.exists) throw new HttpsError('not-found', 'Employee not found');
+
+  let fields = { ...patch };
+  if (!isAdminOrDev) {
+    fields = Object.fromEntries(
+      Object.entries(fields).filter(([k]) => SELF_UPDATE_FIELDS.includes(k)),
+    );
+    if (!Object.keys(fields).length) {
+      throw new HttpsError('invalid-argument', 'No editable fields provided');
+    }
+  } else if (fields.role && fields.role !== snap.data().role) {
+    if (fields.role === 'developer' && callerRole !== 'developer') {
+      throw new HttpsError('permission-denied', 'Only a developer can grant the developer role');
+    }
+    await setRole(uid, fields.role);
+  }
+
+  if (isAdminOrDev && fields.status === 'Terminated') {
+    fields.active = false;
+  } else if (isAdminOrDev && fields.status && EMPLOYEE_STATUSES.includes(fields.status)) {
+    fields.active = true;
+  }
+
+  fields.updatedAt = FieldValue.serverTimestamp();
+  await userRef.set(fields, { merge: true });
+
+  const merged = { ...(snap.data() || {}), ...fields };
+  await upsertMessagingRoster(uid, merged);
+  if (fields.status || fields.role || fields.name || fields.active !== undefined) {
+    await syncShopConversationParticipants().catch((e) => console.warn('shop sync:', e.message));
+  }
+
+  await db.collection('audit_log').add({
+    action: 'employee.update',
+    entityType: 'employee',
+    entityId: uid,
+    userId: request.auth.uid,
+    at: FieldValue.serverTimestamp(),
+  });
+
+  return { ok: true, uid };
+});
+
+/** Bootstrap messaging roster + shop channel for all active staff */
+exports.ensureMessaging = onCall({ region: 'us-central1' }, async (request) => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Login required');
+  const role = request.auth.token.role;
+  if (!['admin', 'office', 'technician', 'developer'].includes(role)) {
+    throw new HttpsError('permission-denied', 'Staff only');
+  }
+
+  const usersSnap = await db.collection('users').get();
+  let synced = 0;
+  for (const doc of usersSnap.docs) {
+    const d = doc.data() || {};
+    if (!d.email && !d.name) continue;
+    await upsertMessagingRoster(doc.id, d);
+    synced += 1;
+  }
+  const shop = await syncShopConversationParticipants();
+  return { ok: true, synced, shop };
+});
+
+/** List recent audit log entries (admin/developer only) — used for audit export */
+exports.listAuditLog = onCall({ region: 'us-central1' }, async (request) => {
+  assertAdminOrDev(request);
+  const snap = await db.collection('audit_log').orderBy('at', 'desc').limit(500).get();
+  const items = snap.docs.map((d) => {
+    const data = d.data();
+    const at = data.at?.toDate?.() ? data.at.toDate().toISOString() : (data.at || null);
+    return { id: d.id, ...data, at };
+  });
+  return { ok: true, items };
 });
 
 /**
@@ -485,7 +1104,147 @@ exports.createStripeCheckout = onCall(
   },
 );
 
-/** Stripe webhook — records payments and updates invoices (server-side only) */
+/** Admin/developer: refund a Stripe payment (full or partial) */
+exports.createStripeRefund = onCall(
+  { region: 'us-central1', secrets: ['STRIPE_SECRET_KEY'] },
+  async (request) => {
+    assertAdminOrDev(request);
+    const { paymentId, amount, reason } = request.data || {};
+    if (!paymentId) throw new HttpsError('invalid-argument', 'paymentId required');
+
+    const payRef = db.collection('payments').doc(paymentId);
+    const paySnap = await payRef.get();
+    if (!paySnap.exists) throw new HttpsError('not-found', 'Payment not found');
+    const pay = paySnap.data();
+
+    if (!pay.stripePaymentIntentId) {
+      throw new HttpsError(
+        'failed-precondition',
+        'This payment has no Stripe payment intent and cannot be refunded through Stripe',
+      );
+    }
+
+    const paid = Number(pay.amount) || 0;
+    const alreadyRefunded = Number(pay.refundedAmount) || 0;
+    const refundable = Math.round((paid - alreadyRefunded) * 100) / 100;
+
+    // Ledger already fully refunded — treat as success so the UI can refresh
+    if (pay.status === 'Refunded' || refundable <= 0.01) {
+      return {
+        ok: true,
+        alreadyRefunded: true,
+        paymentId,
+        amount: 0,
+        refundedAmount: alreadyRefunded || paid,
+        status: 'Refunded',
+      };
+    }
+
+    const refundAmount = amount != null ? Number(amount) : refundable;
+    if (!refundAmount || refundAmount <= 0) {
+      throw new HttpsError('invalid-argument', 'Invalid refund amount');
+    }
+    if (refundAmount > refundable + 0.01) {
+      throw new HttpsError('invalid-argument', `Amount exceeds refundable balance (${refundable.toFixed(2)})`);
+    }
+
+    const stripeReason = ['duplicate', 'fraudulent', 'requested_by_customer'].includes(reason)
+      ? reason
+      : 'requested_by_customer';
+
+    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+    let refund;
+    try {
+      refund = await stripe.refunds.create(
+        {
+          payment_intent: pay.stripePaymentIntentId,
+          amount: Math.round(refundAmount * 100),
+          reason: stripeReason,
+          metadata: {
+            paymentId,
+            invoiceId: pay.invoiceId || '',
+            refundedBy: request.auth.uid,
+            note: typeof reason === 'string' && !['duplicate', 'fraudulent', 'requested_by_customer'].includes(reason)
+              ? reason.slice(0, 400)
+              : '',
+          },
+        },
+        { idempotencyKey: `refund_${paymentId}_${Math.round(refundAmount * 100)}_${alreadyRefunded}` },
+      );
+    } catch (err) {
+      console.error('Stripe refund failed:', err);
+      const msg = err?.raw?.message || err?.message || 'Stripe refund failed';
+      const code = err?.code || err?.raw?.code || '';
+      // Stripe already refunded (earlier attempt) — sync absolute refunded amount into our ledger
+      if (/already been refunded|charge_already_refunded/i.test(msg) || code === 'charge_already_refunded') {
+        try {
+          const pi = await stripe.paymentIntents.retrieve(pay.stripePaymentIntentId, {
+            expand: ['latest_charge', 'latest_charge.refunds'],
+          });
+          const charge = typeof pi.latest_charge === 'object' ? pi.latest_charge : null;
+          const amountRefundedTotal = ((charge?.amount_refunded != null
+            ? charge.amount_refunded
+            : (pi.amount_received || paid * 100)) / 100);
+          const latestRefund = charge?.refunds?.data?.[0];
+          const applied = await applyStripeRefund({
+            paymentId,
+            paymentIntentId: pay.stripePaymentIntentId,
+            refundId: latestRefund?.id || `sync_${paymentId}`,
+            amountRefundedTotal,
+            reason: reason || 'sync_already_refunded',
+            eventId: `sync_refund_${paymentId}_${latestRefund?.id || Math.round(amountRefundedTotal * 100)}`,
+            refundedBy: request.auth.uid,
+          });
+          return {
+            ok: true,
+            synced: true,
+            paymentId,
+            amount: applied?.amount || amountRefundedTotal,
+            refundedAmount: applied?.refundedAmount || amountRefundedTotal,
+            status: applied?.status || 'Refunded',
+            refundId: latestRefund?.id || null,
+          };
+        } catch (syncErr) {
+          console.error('Sync after already-refunded failed:', syncErr);
+          throw new HttpsError('internal', syncErr.message || msg);
+        }
+      }
+      if (/exceeds|insufficient|No such payment/i.test(msg)) {
+        throw new HttpsError('failed-precondition', msg);
+      }
+      throw new HttpsError('internal', msg);
+    }
+
+    try {
+      const applied = await applyStripeRefund({
+        paymentId,
+        refundId: refund.id,
+        amountDelta: refundAmount,
+        reason: reason || stripeReason,
+        eventId: `refund_${refund.id}`,
+        refundedBy: request.auth.uid,
+      });
+
+      return {
+        ok: true,
+        refundId: refund.id,
+        paymentId,
+        amount: refundAmount,
+        refundedAmount: applied?.refundedAmount,
+        status: applied?.status || null,
+        stripeStatus: refund.status,
+      };
+    } catch (err) {
+      console.error('applyStripeRefund failed after Stripe refund:', err);
+      throw new HttpsError(
+        'internal',
+        `Stripe refund ${refund.id} succeeded but ledger update failed: ${err.message}. Retry the same refund or refresh payments.`,
+      );
+    }
+  },
+);
+
+/** Stripe webhook — records payments and refunds (server-side only) */
 exports.stripeWebhook = onRequest(
   { region: 'us-central1', secrets: ['STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET'] },
   async (req, res) => {
@@ -522,6 +1281,40 @@ exports.stripeWebhook = onRequest(
             customerName: session.metadata.customerName,
             eventId: event.id,
           });
+        }
+      } else if (event.type === 'charge.refunded') {
+        const charge = event.data.object;
+        const paymentIntentId = typeof charge.payment_intent === 'string'
+          ? charge.payment_intent
+          : charge.payment_intent?.id;
+        if (paymentIntentId) {
+          const refunds = charge.refunds?.data || [];
+          const latest = refunds[0];
+          await applyStripeRefund({
+            paymentIntentId,
+            refundId: latest?.id || null,
+            amountRefundedTotal: (charge.amount_refunded || 0) / 100,
+            reason: latest?.reason || 'stripe_dashboard',
+            eventId: event.id,
+            refundedBy: 'stripe_webhook',
+          });
+        }
+      } else if (event.type === 'refund.updated' || event.type === 'refund.created') {
+        const refund = event.data.object;
+        if (refund.status === 'succeeded' || refund.status === 'pending') {
+          const paymentIntentId = typeof refund.payment_intent === 'string'
+            ? refund.payment_intent
+            : refund.payment_intent?.id;
+          if (paymentIntentId && refund.id) {
+            await applyStripeRefund({
+              paymentIntentId,
+              refundId: refund.id,
+              amountDelta: (refund.amount || 0) / 100,
+              reason: refund.reason || refund.metadata?.note || 'stripe_refund',
+              eventId: `refund_${refund.id}`,
+              refundedBy: refund.metadata?.refundedBy || 'stripe_webhook',
+            });
+          }
         }
       }
       res.json({ received: true });

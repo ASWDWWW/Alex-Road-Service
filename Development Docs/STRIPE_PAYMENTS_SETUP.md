@@ -48,7 +48,8 @@ Confirm these functions exist in Firebase Console → Functions:
 | Function | Purpose |
 |----------|---------|
 | `createStripeCheckout` | Starts Stripe Checkout for an invoice |
-| `stripeWebhook` | Records payment + updates invoice after charge |
+| `createStripeRefund` | Admin refunds (full/partial) via Stripe |
+| `stripeWebhook` | Records payment/refund + updates invoice |
 
 - [ ] Deploy completed without errors
 - [ ] `stripeWebhook` URL is live (see Step 3)
@@ -64,8 +65,10 @@ Confirm these functions exist in Firebase Console → Functions:
    https://us-central1-launchpage-alex-roadservice.cloudfunctions.net/stripeWebhook
    ```
 
-3. Select event:
-   - [ ] `checkout.session.completed`
+3. Select events:
+   - [ ] `checkout.session.completed` (required for payments)
+   - [ ] `charge.refunded` (required for Dashboard + in-app refund sync)
+   - [ ] `refund.created` (recommended)
 4. Copy the **Signing secret** (`whsec_...`)
 
 - [ ] Webhook endpoint created
@@ -107,7 +110,8 @@ Payments require a logged-in user with role **admin**, **office**, or **develope
 
 ## Step 6 — Test payment (Stripe test mode)
 
-Use Stripe test card: **`4242 4242 4242 4242`** — any future expiry, any CVC.
+Use Stripe test card: **`4242 4242 4242 4242`** — any future expiry, any CVC.  
+Full card list: [`STRIPE_TEST_CARDS.md`](STRIPE_TEST_CARDS.md)
 
 1. [ ] Log in as office or admin
 2. [ ] Open **Invoices** → unpaid invoice → **Pay with Stripe**

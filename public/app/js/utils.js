@@ -1,6 +1,6 @@
 /* Alex Road Service — Shared Utilities */
 window.ARS = window.ARS || {};
-ARS.APP_BUILD = '20260619g';
+ARS.APP_BUILD = '20260720w';
 
 ARS.fmtMoney = (n) => '$' + Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -98,12 +98,18 @@ ARS.PERMISSIONS = {
   'invoices.edit': ['admin', 'office'],
   'invoices.writeOff': ['admin'],
   'payments.record': ['admin', 'office'],
-  'payments.refund': ['admin'],
+  'payments.refund': ['admin', 'developer'],
   'inventory.edit': ['admin', 'office'],
   'reports.view': ['admin', 'office'],
   'settings.view': ['admin', 'developer'],
   'settings.edit': ['admin', 'developer'],
   'users.manage': ['admin', 'developer'],
+  'employees.view': ['admin', 'office', 'developer'],
+  'employees.manage': ['admin', 'developer'],
+  'messages.view': ['admin', 'office', 'technician', 'developer'],
+  'messages.send': ['admin', 'office', 'technician', 'developer'],
+  'schedule.view': ['admin', 'office', 'technician', 'developer'],
+  'schedule.manage': ['admin', 'office', 'developer'],
 };
 
 ARS.ROLE_LABELS = {
@@ -118,7 +124,7 @@ ARS.NAV_BY_ROLE = {
   admin: null,
   office: null,
   developer: null,
-  technician: ['/app/dashboard.html', '/app/customers.html', '/app/trucks.html', '/app/work-orders.html', '/app/inventory.html'],
+  technician: ['/app/dashboard.html', '/app/customers.html', '/app/trucks.html', '/app/work-orders.html', '/app/inventory.html', '/app/messages.html', '/app/schedule.html'],
 };
 
 ARS.canAccessLeads = () => ['admin', 'office', 'developer', 'demo'].includes(ARS.Auth?.getRole?.() || '');

@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <title>Employees | Alex Road Service Ops</title>
+  <link rel="stylesheet" href="/app/css/app.css?v=20260720w">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+</head>
+<body class="app-body">
+<div id="sidebar-placeholder"></div>
+<main class="app-main">
+  <div id="topbar-placeholder" data-title="Employees"></div>
+  <div class="app-content">
+
+    <div class="page-header">
+      <div>
+        <div class="page-header__title">Employees</div>
+        <div class="page-header__sub">Staff directory, schedules, and onboarding</div>
+      </div>
+      <div class="page-header__actions">
+        <button class="btn btn--primary" id="hireEmployeeBtn" hidden><i class="fas fa-user-plus"></i> Hire Employee</button>
+      </div>
+    </div>
+
+    <!-- KPI Row -->
+    <div class="kpi-grid" style="margin-bottom:18px">
+      <div class="kpi-card">
+        <div class="kpi-card__row">
+          <div><div class="kpi-card__label">Active Staff</div><div class="kpi-card__value" id="kpiActiveStaff">0</div></div>
+          <div class="kpi-card__icon green"><i class="fas fa-id-badge"></i></div>
+        </div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-card__row">
+          <div><div class="kpi-card__label">On Leave</div><div class="kpi-card__value amber" id="kpiOnLeave">0</div></div>
+          <div class="kpi-card__icon amber"><i class="fas fa-umbrella-beach"></i></div>
+        </div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-card__row">
+          <div><div class="kpi-card__label">Onboarding Incomplete</div><div class="kpi-card__value red" id="kpiOnboardingIncomplete">0</div></div>
+          <div class="kpi-card__icon red"><i class="fas fa-tasks"></i></div>
+        </div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-card__row">
+          <div><div class="kpi-card__label">Technicians</div><div class="kpi-card__value blue" id="kpiTechnicians">0</div></div>
+          <div class="kpi-card__icon blue"><i class="fas fa-tools"></i></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Filter Bar -->
+    <div class="filter-bar">
+      <div class="filter-tabs" id="employeesFilterTabs">
+        <button class="filter-tab active" data-filter="all">All</button>
+        <button class="filter-tab" data-filter="Active">Active</button>
+        <button class="filter-tab" data-filter="On Leave">On Leave</button>
+        <button class="filter-tab" data-filter="Terminated">Terminated</button>
+        <button class="filter-tab" data-filter="Archived">Archived</button>
+        <button class="filter-tab" data-filter="Onboarding">Onboarding</button>
+      </div>
+      <div class="filter-search">
+        <i class="fas fa-search"></i>
+        <input type="text" id="employeesSearch" placeholder="Search name, title, department…">
+      </div>
+      <span class="filter-count" id="employeesCount"></span>
+    </div>
+
+    <!-- Table -->
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Name</th><th>Role</th><th>Title</th><th>Phone</th><th>Hire Date</th>
+            <th>Status</th><th>Onboarding</th><th>Schedule</th><th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="employeesTable"><tr><td colspan="9"><div class="loading-state"><div class="loading-state__spinner"></div><div class="loading-state__text">Loading…</div></div></td></tr></tbody>
+      </table>
+    </div>
+
+  </div>
+</main>
+
+<!-- Employee detail drawer -->
+<div class="drawer-overlay" id="employeeDrawer">
+  <div class="drawer" role="dialog" aria-modal="true" style="width:min(560px,100%)">
+    <div class="drawer__header">
+      <div class="drawer__title" id="employeeDrawerTitle">Employee</div>
+      <button class="modal__close" type="button" id="employeeDrawerClose"><i class="fas fa-times"></i></button>
+    </div>
+    <div class="drawer__body" id="employeeDrawerBody"></div>
+    <div class="drawer__footer" id="employeeDrawerFooter"></div>
+  </div>
+</div>
+
+<!-- Hire Employee Modal -->
+<div class="modal-overlay" id="hireEmployeeModal">
+  <div class="modal">
+    <div class="modal__header">
+      <div class="modal__title">Hire Employee</div>
+      <button class="modal__close" data-close-modal><i class="fas fa-times"></i></button>
+    </div>
+    <div class="modal__body">
+      <div class="form-row-2">
+        <div class="form-row"><label class="form-label">Full Name *</label><input class="form-input" id="hireName" placeholder="e.g. Jordan Blake"></div>
+        <div class="form-row"><label class="form-label">Email *</label><input class="form-input" id="hireEmail" type="email" placeholder="name@alexroadservice.com"></div>
+      </div>
+      <div class="form-row-2">
+        <div class="form-row"><label class="form-label">Role *</label><select class="form-select" id="hireRole"></select></div>
+        <div class="form-row"><label class="form-label">Phone</label><input class="form-input" id="hirePhone" type="tel" placeholder="(732) 555-0100"></div>
+      </div>
+      <div class="form-row-2">
+        <div class="form-row"><label class="form-label">Job Title</label><input class="form-input" id="hireJobTitle" placeholder="e.g. Technician"></div>
+        <div class="form-row"><label class="form-label">Department</label><input class="form-input" id="hireDepartment" placeholder="e.g. Service"></div>
+      </div>
+      <div class="form-row"><label class="form-label">Hire Date</label><input class="form-input" id="hireDate" type="date"></div>
+    </div>
+    <div class="modal__footer">
+      <button class="btn btn--secondary" data-close-modal>Cancel</button>
+      <button class="btn btn--primary" id="saveHireBtn"><i class="fas fa-check"></i> Create Employee</button>
+    </div>
+  </div>
+</div>
+
+<!-- Hire Success Modal -->
+<div class="modal-overlay" id="hireSuccessModal">
+  <div class="modal" style="max-width:460px">
+    <div class="modal__header">
+      <div class="modal__title">Employee Created</div>
+      <button class="modal__close" data-close-modal><i class="fas fa-times"></i></button>
+    </div>
+    <div class="modal__body">
+      <p style="color:var(--steel);font-size:.85rem;margin-bottom:14px" id="hireSuccessMsg">
+        Account created with the shared default password. A password-reset email was sent so they can set their own password.
+      </p>
+      <div class="form-row"><label class="form-label">Email</label><input class="form-input" id="hireSuccessEmail" readonly></div>
+      <div class="form-row">
+        <label class="form-label">Default Password</label>
+        <div style="display:flex;gap:8px">
+          <input class="form-input" id="hireSuccessPassword" readonly style="font-family:'Courier New',monospace">
+          <button type="button" class="btn btn--secondary btn--icon" id="hireSuccessCopyBtn" title="Copy password"><i class="fas fa-copy"></i></button>
+        </div>
+      </div>
+      <p id="hireSuccessEmailStatus" style="font-size:.8rem;color:var(--steel);margin-top:8px"></p>
+    </div>
+    <div class="modal__footer">
+      <button class="btn btn--primary" data-close-modal>Done</button>
+    </div>
+  </div>
+</div>
+
+<script src="/app/js/utils.js?v=20260720w"></script>
+<script src="/app/js/demo-mode.js?v=20260720w"></script>
+<script src="/app/js/data-store.js?v=20260720w"></script>
+<script src="/app/js/auth.js?v=20260720w"></script>
+<script src="/app/js/data-service.js?v=20260720w"></script>
+<script src="/app/js/page-scripts.js?v=20260720w"></script>
+<script src="/app/js/app-components.js?v=20260720w"></script>
+<script>
+  let activeFilter = 'all', searchVal = '', urlState = {}, openEmployeeUid = '';
+
+  function esc(s) {
+    return String(s ?? '').replace(/[&<>"']/g, (c) => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+    }[c]));
+  }
+
+  function hirableRoles() {
+    const role = ARS.Auth.getRole();
+    const base = ['admin', 'office', 'technician'];
+    if (role === 'developer') base.push('developer');
+    return base;
+  }
+
+  function editableRoles() {
+    return hirableRoles();
+  }
+
+  function compactSchedule(schedule) {
+    if (!schedule) return '—';
+    const week = ['mon', 'tue', 'wed', 'thu', 'fri'];
+    const allSame = week.every((d) => schedule[d] === schedule.mon) && schedule.mon;
+    const weekendOff = (schedule.sat === 'Off' || !schedule.sat) && (schedule.sun === 'Off' || !schedule.sun);
+    if (allSame && weekendOff) return `Mon–Fri ${schedule.mon}`;
+    return 'Custom hours';
+  }
+
+  function getFilteredEmployees() {
+    let data = ARS.Data.listEmployees({ q: searchVal });
+    if (activeFilter === 'Onboarding') data = data.filter((e) => e.onboardingPct < 100);
+    else if (activeFilter !== 'all') data = data.filter((e) => e.status === activeFilter);
+    return data;
+  }
+
+  function renderKpis(all) {
+    document.getElementById('kpiActiveStaff').textContent = all.filter((e) => e.status === 'Active').length;
+    document.getElementById('kpiOnLeave').textContent = all.filter((e) => e.status === 'On Leave').length;
+    document.getElementById('kpiOnboardingIncomplete').textContent = all.filter((e) => e.status !== 'Archived' && e.onboardingPct < 100).length;
+    document.getElementById('kpiTechnicians').textContent = all.filter((e) => e.role === 'technician' && e.status !== 'Terminated' && e.status !== 'Archived').length;
+  }
+
+  function renderTable() {
+    const all = ARS.Data.listEmployees();
+    const data = getFilteredEmployees();
+    renderKpis(all);
+    document.getElementById('employeesCount').textContent = `${data.length} employee${data.length !== 1 ? 's' : ''}`;
+    document.getElementById('employeesTable').innerHTML = data.length ? data.map((e) => `
+      <tr data-row-id="${e.uid}" style="cursor:pointer">
+        <td class="td-bold">${esc(e.name)}</td>
+        <td>${esc(ARS.ROLE_LABELS[e.role] || e.role)}</td>
+        <td class="td-muted">${esc(e.jobTitle || '—')}</td>
+        <td class="td-muted">${esc(e.phone || '—')}</td>
+        <td class="td-muted">${e.hireDate ? ARS.fmtDate(e.hireDate) : '—'}</td>
+        <td>${chip(e.status)}</td>
+        <td>${e.onboardingDone}/${e.onboardingTotal} <span class="td-muted">(${e.onboardingPct}%)</span></td>
+        <td class="td-muted" style="font-size:.78rem">${esc(compactSchedule(e.schedule))}</td>
+        <td class="td-actions">
+          <button class="btn btn--ghost btn--sm btn--icon" onclick="openEmployeeDrawer('${e.uid}')" title="View"><i class="fas fa-eye"></i></button>
+        </td>
+      </tr>
+    `).join('') : ARS.Pages.tablePlaceholder(9, 'No employees found', 'fa-id-badge');
+
+    if (openEmployeeUid) {
+      const still = ARS.Data.getEmployee(openEmployeeUid);
+      if (still) openEmployeeDrawer(openEmployeeUid);
+    }
+  }
+
+  function closeEmployeeDrawer() {
+    document.getElementById('employeeDrawer')?.classList.remove('open');
+    openEmployeeUid = '';
+  }
+
+  function buildProfileSection(e, canManage) {
+    if (!canManage) {
+      return `
+        <div class="detail-info-grid">
+          <div><span style="color:var(--steel)">Email:</span> ${esc(e.email || '—')}</div>
+          <div><span style="color:var(--steel)">Role:</span> ${esc(ARS.ROLE_LABELS[e.role] || e.role)}</div>
+          <div><span style="color:var(--steel)">Title:</span> ${esc(e.jobTitle || '—')}</div>
+          <div><span style="color:var(--steel)">Department:</span> ${esc(e.department || '—')}</div>
+          <div><span style="color:var(--steel)">Hire date:</span> ${e.hireDate ? ARS.fmtDate(e.hireDate) : '—'}</div>
+          <div><span style="color:var(--steel)">Status:</span> ${e.status}</div>
+          <div><span style="color:var(--steel)">Phone:</span> ${esc(e.phone || '—')}</div>
+          <div><span style="color:var(--steel)">Employment:</span> ${esc(e.employmentType || '—')}</div>
+        </div>
+        <div style="margin-top:12px"><span style="color:var(--steel)">Address:</span> ${esc(e.address || '—')}</div>
+        <div style="margin-top:8px"><span style="color:var(--steel)">Emergency contact:</span> ${esc(e.emergencyContact?.name || '—')} ${e.emergencyContact?.phone ? `· ${esc(e.emergencyContact.phone)}` : ''}</div>
+        <div style="margin-top:8px"><span style="color:var(--steel)">Certifications:</span> ${(e.certifications || []).map(esc).join(', ') || '—'}</div>`;
+    }
+    const roleOpts = editableRoles().map((r) => `<option value="${r}"${e.role === r ? ' selected' : ''}>${ARS.ROLE_LABELS[r] || r}</option>`).join('');
+    return `
+      <div class="detail-info-grid" style="margin-bottom:4px"><div><span style="color:var(--steel)">Email:</span> ${esc(e.email || '—')}</div></div>
+      <div class="form-row-2">
+        <div class="form-row"><label class="form-label">Role</label><select class="form-select" id="edRole">${roleOpts}</select></div>
+        <div class="form-row"><label class="form-label">Status</label>
+          <select class="form-select" id="edStatus">
+            ${['Active', 'On Leave', 'Terminated', 'Archived'].map((s) => `<option${e.status === s ? ' selected' : ''}>${s}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+      <div class="form-row-2">
+        <div class="form-row"><label class="form-label">Job Title</label><input class="form-input" id="edJobTitle" value="${esc(e.jobTitle || '')}"></div>
+        <div class="form-row"><label class="form-label">Department</label><input class="form-input" id="edDepartment" value="${esc(e.department || '')}"></div>
+      </div>
+      <div class="form-row-2">
+        <div class="form-row"><label class="form-label">Hire Date</label><input class="form-input" id="edHireDate" type="date" value="${e.hireDate ? ARS.toInputDate(e.hireDate) : ''}"></div>
+        <div class="form-row"><label class="form-label">Employment Type</label>
+          <select class="form-select" id="edEmploymentType">
+            ${['Full-time', 'Part-time', 'Contract', 'Seasonal'].map((t) => `<option${e.employmentType === t ? ' selected' : ''}>${t}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+      <div class="form-row-2">
+        <div class="form-row"><label class="form-label">Phone</label><input class="form-input" id="edPhone" value="${esc(e.phone || '')}"></div>
+        <div class="form-row"><label class="form-label">Address</label><input class="form-input" id="edAddress" value="${esc(e.address || '')}"></div>
+      </div>
+      <div class="form-row-2">
+        <div class="form-row"><label class="form-label">Emergency Contact Name</label><input class="form-input" id="edEcName" value="${esc(e.emergencyContact?.name || '')}"></div>
+        <div class="form-row"><label class="form-label">Emergency Contact Phone</label><input class="form-input" id="edEcPhone" value="${esc(e.emergencyContact?.phone || '')}"></div>
+      </div>
+      <div class="form-row"><label class="form-label">Certifications (comma-separated)</label><input class="form-input" id="edCerts" value="${esc((e.certifications || []).join(', '))}"></div>
+      <button class="btn btn--primary btn--sm" id="saveProfileBtn" type="button"><i class="fas fa-save"></i> Save Profile</button>`;
+  }
+
+  function buildCalendarSection(e) {
+    if (!ARS.can('schedule.view')) return '<div class="td-muted" style="font-size:.85rem">No calendar access</div>';
+    const href = ARS.Pages.appHref(`/app/schedule.html?employeeId=${encodeURIComponent(e.uid)}`);
+    return `
+      <div class="emp-cal-card">
+        <p style="font-size:.85rem;color:var(--steel);margin:0 0 12px;line-height:1.45">
+          View job schedule and work orders, add custom blocks, or ${ARS.can('schedule.manage') ? 'push meetings / lunch / time-off to this person or the whole shop' : 'add personal blocks'}.
+        </p>
+        <a class="btn btn--primary btn--sm" href="${href}"><i class="fas fa-calendar-alt"></i> Open ${esc(e.name.split(' ')[0] || 'employee')}’s calendar</a>
+      </div>`;
+  }
+
+  function buildScheduleSection(e, canManage) {
+    const days = [['mon', 'Monday'], ['tue', 'Tuesday'], ['wed', 'Wednesday'], ['thu', 'Thursday'], ['fri', 'Friday'], ['sat', 'Saturday'], ['sun', 'Sunday']];
+    const schedule = e.schedule || {};
+    if (!canManage) {
+      return `<div style="font-size:.85rem;line-height:1.8">${days.map(([k, label]) => `<div><span style="color:var(--steel)">${label}:</span> ${esc(schedule[k] || 'Off')}</div>`).join('')}${schedule.notes ? `<div style="margin-top:6px;font-style:italic">${esc(schedule.notes)}</div>` : ''}</div>`;
+    }
+    return `
+      ${days.map(([k, label]) => `
+        <div class="form-row"><label class="form-label">${label}</label><input class="form-input" id="edSched_${k}" value="${esc(schedule[k] || '')}" placeholder="e.g. 7:00 AM – 3:30 PM or Off"></div>
+      `).join('')}
+      <div class="form-row"><label class="form-label">Notes</label><textarea class="form-textarea" id="edSchedNotes" rows="2">${esc(schedule.notes || '')}</textarea></div>
+      <button class="btn btn--primary btn--sm" id="saveScheduleBtn" type="button"><i class="fas fa-save"></i> Save weekly hours</button>`;
+  }
+
+  function buildOnboardingSection(e, canManage) {
+    const items = e.onboarding || [];
+    return `
+      <div style="display:flex;flex-direction:column;gap:10px">
+        ${items.map((o) => `
+          <label style="display:flex;align-items:center;gap:10px;font-size:.85rem;${canManage ? 'cursor:pointer' : ''}">
+            <input type="checkbox" data-onboard-id="${o.id}" ${o.done ? 'checked' : ''} ${canManage ? '' : 'disabled'}>
+            <span style="flex:1">${esc(o.label)}</span>
+            ${o.done && o.doneAt ? `<span class="td-muted" style="font-size:.72rem">${ARS.fmtDate(o.doneAt)}</span>` : ''}
+          </label>
+        `).join('')}
+      </div>
+      ${canManage ? `<button class="btn btn--primary btn--sm" id="saveOnboardingBtn" type="button" style="margin-top:14px"><i class="fas fa-save"></i> Save Checklist</button>` : ''}`;
+  }
+
+  function sectionTitle(text) {
+    return `<div style="font-weight:700;font-size:.85rem;text-transform:uppercase;letter-spacing:.05em;color:var(--steel);margin:20px 0 10px">${text}</div>`;
+  }
+
+  function openEmployeeDrawer(uid) {
+    const e = ARS.Data.getEmployee(uid);
+    if (!e) return showToast('Employee not found', 'error');
+    openEmployeeUid = uid;
+    const canManage = ARS.can('employees.manage');
+    document.getElementById('employeeDrawerTitle').textContent = e.name;
+    document.getElementById('employeeDrawerBody').innerHTML = `
+      ${sectionTitle('Profile')}
+      ${buildProfileSection(e, canManage)}
+      ${sectionTitle('Calendar')}
+      ${buildCalendarSection(e)}
+      ${sectionTitle('Weekly hours')}
+      ${buildScheduleSection(e, canManage)}
+      ${sectionTitle('Onboarding')}
+      ${buildOnboardingSection(e, canManage)}
+      ${sectionTitle('Paperwork')}
+      <div id="employeeMediaMount"></div>`;
+    document.getElementById('employeeDrawerFooter').innerHTML = canManage
+      ? `<div style="display:flex;flex-wrap:wrap;gap:8px;width:100%;justify-content:space-between">
+          <div style="display:flex;flex-wrap:wrap;gap:8px">
+            <button class="btn btn--secondary btn--sm" type="button" id="employeeResendResetBtn"><i class="fas fa-envelope"></i> Send password reset</button>
+            ${e.status === 'Archived' || e.archived
+              ? `<button class="btn btn--secondary btn--sm" type="button" id="employeeUnarchiveBtn"><i class="fas fa-box-open"></i> Unarchive</button>`
+              : `<button class="btn btn--secondary btn--sm" type="button" id="employeeArchiveBtn"><i class="fas fa-archive"></i> Archive</button>`}
+            <button class="btn btn--danger btn--sm" type="button" id="employeeDeleteBtn"><i class="fas fa-trash"></i> Delete</button>
+          </div>
+          <button class="btn btn--secondary" id="employeeDrawerCloseFooter">Close</button>
+        </div>`
+      : `<button class="btn btn--secondary" id="employeeDrawerCloseFooter">Close</button>`;
+    document.getElementById('employeeDrawerCloseFooter')?.addEventListener('click', closeEmployeeDrawer);
+
+    document.getElementById('employeeResendResetBtn')?.addEventListener('click', async () => {
+      try {
+        await ARS.Data.sendEmployeePasswordReset(e.uid);
+        showToast(`Password reset email sent to ${e.email}`, 'success');
+      } catch (err) {
+        showToast(err.message || 'Could not send reset email', 'error');
+      }
+    });
+
+    document.getElementById('employeeArchiveBtn')?.addEventListener('click', async () => {
+      const ok = await ARS.Pages.confirmAsync({
+        title: 'Archive employee',
+        message: `Archive ${e.name}? They will lose login access. HR records are kept.`,
+        okLabel: 'Archive',
+      });
+      if (!ok) return;
+      try {
+        await ARS.Data.archiveEmployee(e.uid);
+        showToast('Employee archived', 'success');
+        closeEmployeeDrawer();
+        renderTable();
+      } catch (err) {
+        showToast(err.message || 'Archive failed', 'error');
+      }
+    });
+
+    document.getElementById('employeeUnarchiveBtn')?.addEventListener('click', async () => {
+      try {
+        await ARS.Data.unarchiveEmployee(e.uid);
+        showToast('Employee restored', 'success');
+        renderTable();
+        openEmployeeDrawer(e.uid);
+      } catch (err) {
+        showToast(err.message || 'Unarchive failed', 'error');
+      }
+    });
+
+    document.getElementById('employeeDeleteBtn')?.addEventListener('click', async () => {
+      const ok = await ARS.Pages.confirmAsync({
+        title: 'Delete employee permanently',
+        message: `Permanently delete ${e.name} (${e.email})? This removes their login and HR profile and cannot be undone.`,
+        okLabel: 'Delete forever',
+      });
+      if (!ok) return;
+      try {
+        await ARS.Data.deleteEmployee(e.uid);
+        showToast('Employee deleted', 'success');
+        closeEmployeeDrawer();
+        renderTable();
+      } catch (err) {
+        showToast(err.message || 'Delete failed', 'error');
+      }
+    });
+
+    if (ARS.Media.canView('employees')) {
+      ARS.MediaUI.mount(document.getElementById('employeeMediaMount'), {
+        entityType: 'employees',
+        entityId: e.uid,
+        title: 'Paperwork & documents',
+        getEntity: () => ARS.Data.getEmployee(e.uid),
+      });
+    }
+
+    document.getElementById('saveProfileBtn')?.addEventListener('click', async (evt) => {
+      const btn = evt.currentTarget;
+      btn.disabled = true;
+      try {
+        await ARS.Data.updateEmployee(e.uid, {
+          role: document.getElementById('edRole').value,
+          status: document.getElementById('edStatus').value,
+          jobTitle: document.getElementById('edJobTitle').value.trim(),
+          department: document.getElementById('edDepartment').value.trim(),
+          hireDate: document.getElementById('edHireDate').value,
+          employmentType: document.getElementById('edEmploymentType').value,
+          phone: document.getElementById('edPhone').value.trim(),
+          address: document.getElementById('edAddress').value.trim(),
+          emergencyContact: {
+            name: document.getElementById('edEcName').value.trim(),
+            phone: document.getElementById('edEcPhone').value.trim(),
+          },
+          certifications: document.getElementById('edCerts').value.split(',').map((s) => s.trim()).filter(Boolean),
+        });
+        showToast('Profile updated', 'success');
+        renderTable();
+      } catch (err) {
+        showToast(err.message || 'Update failed', 'error');
+      } finally {
+        btn.disabled = false;
+      }
+    });
+
+    document.getElementById('saveScheduleBtn')?.addEventListener('click', async (evt) => {
+      const btn = evt.currentTarget;
+      btn.disabled = true;
+      try {
+        const schedule = { notes: document.getElementById('edSchedNotes').value.trim() };
+        ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'].forEach((k) => {
+          schedule[k] = document.getElementById(`edSched_${k}`).value.trim() || 'Off';
+        });
+        await ARS.Data.updateEmployee(e.uid, { schedule });
+        showToast('Schedule updated', 'success');
+        renderTable();
+      } catch (err) {
+        showToast(err.message || 'Update failed', 'error');
+      } finally {
+        btn.disabled = false;
+      }
+    });
+
+    document.getElementById('saveOnboardingBtn')?.addEventListener('click', async (evt) => {
+      const btn = evt.currentTarget;
+      btn.disabled = true;
+      try {
+        const now = new Date().toISOString();
+        const onboarding = (e.onboarding || []).map((o) => {
+          const cb = document.querySelector(`[data-onboard-id="${o.id}"]`);
+          const done = !!cb?.checked;
+          return done
+            ? { id: o.id, label: o.label, done: true, doneAt: o.doneAt || now }
+            : { id: o.id, label: o.label, done: false };
+        });
+        await ARS.Data.updateEmployee(e.uid, { onboarding });
+        showToast('Onboarding checklist updated', 'success');
+        renderTable();
+      } catch (err) {
+        showToast(err.message || 'Update failed', 'error');
+      } finally {
+        btn.disabled = false;
+      }
+    });
+
+    document.getElementById('employeeDrawer')?.classList.add('open');
+  }
+
+  window.openEmployeeDrawer = openEmployeeDrawer;
+
+  function populateHireRoleSelect() {
+    const sel = document.getElementById('hireRole');
+    if (!sel) return;
+    sel.innerHTML = hirableRoles().map((r) => `<option value="${r}">${ARS.ROLE_LABELS[r] || r}</option>`).join('');
+  }
+
+  function showHireSuccess(res) {
+    document.getElementById('hireSuccessEmail').value = res.email || '';
+    document.getElementById('hireSuccessPassword').value = res.defaultPassword || res.tempPassword || 'AlexRoadHire!';
+    const status = document.getElementById('hireSuccessEmailStatus');
+    if (status) {
+      if (res.passwordResetSent) {
+        status.textContent = 'Password-reset email sent — check inbox and spam. They can set a new password from the link.';
+        status.style.color = 'var(--green, #2e7d32)';
+      } else {
+        status.textContent = res.passwordResetError
+          ? `Email not sent (${res.passwordResetError}). Share the default password, or use “Send password reset” on their profile.`
+          : 'Email not sent automatically — share the default password, or use “Send password reset” on their profile.';
+        status.style.color = 'var(--amber, #e65100)';
+      }
+    }
+    openModal('hireSuccessModal');
+  }
+
+  ARS.Pages.waitReady(() => {
+    if (!ARS.can('employees.view')) {
+      showToast('Permission denied', 'error');
+      setTimeout(() => { location.href = '/app/dashboard.html'; }, 600);
+      return;
+    }
+    const canManage = ARS.can('employees.manage');
+    if (canManage) {
+      document.getElementById('hireEmployeeBtn').hidden = false;
+      populateHireRoleSelect();
+    }
+
+    urlState = ARS.Pages.applyListQuery({ tabsId: 'employeesFilterTabs', searchId: 'employeesSearch' });
+    activeFilter = urlState.filter;
+    searchVal = urlState.q || '';
+    renderTable();
+
+    ARS.Pages.bindKpiFilter('kpiActiveStaff', '/app/employees.html?status=Active');
+    ARS.Pages.bindKpiFilter('kpiOnLeave', '/app/employees.html?status=On Leave');
+    ARS.Pages.bindKpiFilter('kpiOnboardingIncomplete', '/app/employees.html?status=Onboarding');
+    ARS.Pages.bindKpiFilter('kpiTechnicians', '/app/employees.html');
+
+    ARS.Pages.bindFilters('employeesFilterTabs', 'employeesSearch', 'employeesCount', ({ filter, q }) => {
+      if (filter !== undefined) activeFilter = filter;
+      if (q !== undefined) searchVal = q;
+      renderTable();
+    });
+    document.addEventListener('ars:data-changed', renderTable);
+
+    document.getElementById('employeeDrawerClose')?.addEventListener('click', closeEmployeeDrawer);
+    document.getElementById('employeeDrawer')?.addEventListener('click', (e) => {
+      if (e.target.id === 'employeeDrawer') closeEmployeeDrawer();
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') closeEmployeeDrawer();
+    });
+
+    document.getElementById('hireEmployeeBtn')?.addEventListener('click', () => openModal('hireEmployeeModal'));
+
+    document.getElementById('saveHireBtn')?.addEventListener('click', async (evt) => {
+      if (!ARS.can('employees.manage')) return showToast('Permission denied', 'error');
+      const name = document.getElementById('hireName').value.trim();
+      const email = document.getElementById('hireEmail').value.trim();
+      const role = document.getElementById('hireRole').value;
+      if (!name || !email || !role) return showToast('Name, email, and role are required', 'error');
+      const btn = evt.currentTarget;
+      btn.disabled = true;
+      try {
+        const res = await ARS.Data.createEmployee({
+          name,
+          email,
+          role,
+          phone: document.getElementById('hirePhone').value.trim(),
+          jobTitle: document.getElementById('hireJobTitle').value.trim(),
+          hireDate: document.getElementById('hireDate').value,
+          department: document.getElementById('hireDepartment').value.trim(),
+        });
+        closeModal('hireEmployeeModal');
+        ['hireName', 'hireEmail', 'hirePhone', 'hireJobTitle', 'hireDate', 'hireDepartment'].forEach((id) => {
+          const el = document.getElementById(id);
+          if (el) el.value = '';
+        });
+        renderTable();
+        showHireSuccess(res);
+      } catch (err) {
+        showToast(err.message || 'Could not create employee', 'error');
+      } finally {
+        btn.disabled = false;
+      }
+    });
+
+    document.getElementById('hireSuccessCopyBtn')?.addEventListener('click', () => {
+      const pw = document.getElementById('hireSuccessPassword').value;
+      if (!pw) return;
+      navigator.clipboard?.writeText(pw)
+        .then(() => showToast('Password copied', 'success'))
+        .catch(() => showToast('Could not copy — select and copy manually', 'error'));
+    });
+
+    if (urlState.highlight) {
+      setTimeout(() => openEmployeeDrawer(urlState.highlight), 200);
+    }
+  });
+</script>
+</body>
+</html>

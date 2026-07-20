@@ -6,7 +6,7 @@
   <link rel="icon" href="/favicon.ico" sizes="any">
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <title>Customers | Alex Road Service Ops</title>
-  <link rel="stylesheet" href="/app/css/app.css">
+  <link rel="stylesheet" href="/app/css/app.css?v=20260720w">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
 </head>
 <body class="app-body">
@@ -78,7 +78,7 @@
             <th>Trucks</th><th>Last Service</th><th>Total Spent</th><th>Status</th><th>Actions</th>
           </tr>
         </thead>
-        <tbody id="custTable"></tbody>
+        <tbody id="custTable"><tr><td colspan="10"><div class="loading-state"><div class="loading-state__spinner"></div><div class="loading-state__text">Loading…</div></div></td></tr></tbody>
       </table>
     </div>
 
@@ -118,15 +118,15 @@
   </div>
 </div>
 
-<script src="/app/js/utils.js"></script>
-<script src="/app/js/demo-mode.js"></script>
-<script src="/app/js/data-store.js"></script>
-<script src="/app/js/auth.js"></script>
-<script src="/app/js/data-service.js"></script>
-<script src="/app/js/page-scripts.js"></script>
-<script src="/app/js/app-components.js"></script>
+<script src="/app/js/utils.js?v=20260720w"></script>
+<script src="/app/js/demo-mode.js?v=20260720w"></script>
+<script src="/app/js/data-store.js?v=20260720w"></script>
+<script src="/app/js/auth.js?v=20260720w"></script>
+<script src="/app/js/data-service.js?v=20260720w"></script>
+<script src="/app/js/page-scripts.js?v=20260720w"></script>
+<script src="/app/js/app-components.js?v=20260720w"></script>
 <script>
-  let activeFilter = 'all', searchVal = '';
+  let activeFilter = 'all', searchVal = '', urlState = {};
 
   function renderKpis(all) {
     document.getElementById('kpiTotal').textContent = all.length;
@@ -138,16 +138,18 @@
   function renderTable() {
     const filters = { q: searchVal };
     if (activeFilter === 'Inactive') filters.status = 'Inactive';
+    else if (activeFilter === 'Active') filters.status = 'Active';
     else if (activeFilter !== 'all') filters.type = activeFilter;
     const data = ARS.Data.listCustomers(filters);
     const all = ARS.Data.listCustomers();
     renderKpis(all);
     document.getElementById('custCount').textContent = `${data.length} result${data.length !== 1 ? 's' : ''}`;
     const canEdit = ARS.can('customers.create');
+    const canDeactivate = ARS.can('customers.deactivate');
     document.getElementById('custTable').innerHTML = data.length ? data.map(c => `
-      <tr>
+      <tr data-row-id="${c.id}" style="cursor:pointer">
         <td class="td-mono td-muted">${c.id}</td>
-        <td class="td-primary">${c.name}</td>
+        <td class="td-primary">${ARS.Pages.entityLink(c.name, `/app/customer-detail.html?id=${c.id}`)}</td>
         <td class="td-muted">${c.company}</td>
         <td><a href="tel:${c.phone.replace(/\D/g,'')}" style="color:var(--red);font-weight:600">${c.phone}</a></td>
         <td>${chip(c.type)}</td>
@@ -157,22 +159,39 @@
         <td>${chip(c.status)}</td>
         <td class="td-actions">
           <a class="btn btn--ghost btn--sm btn--icon" href="/app/customer-detail.html?id=${c.id}" title="View"><i class="fas fa-eye"></i></a>
-          ${canEdit ? `<button class="btn btn--ghost btn--sm btn--icon" onclick="deactivateCust('${c.id}')" title="Deactivate"><i class="fas fa-user-slash"></i></button>` : ''}
+          ${canDeactivate && c.status === 'Active' ? `<button class="btn btn--ghost btn--sm btn--icon" onclick="deactivateCust('${c.id}')" title="Deactivate"><i class="fas fa-user-slash"></i></button>` : ''}
         </td>
-      </tr>`).join('') : `<tr><td colspan="10"><div class="empty-state"><div class="empty-state__icon"><i class="fas fa-users"></i></div><div class="empty-state__title">No customers found</div></div></td></tr>`;
+      </tr>`).join('') : ARS.Pages.tablePlaceholder(10, 'No customers found', 'fa-users');
   }
 
-  window.deactivateCust = (id) => {
+  window.deactivateCust = async (id) => {
     if (!ARS.can('customers.deactivate')) return showToast('Permission denied', 'error');
     if (!confirm('Deactivate this customer?')) return;
-    ARS.Data.deactivateCustomer(id);
-    renderTable();
-    showToast('Customer deactivated', 'success');
+    try {
+      await ARS.Data.deactivateCustomer(id);
+      renderTable();
+      showToast('Customer deactivated', 'success');
+    } catch (e) {
+      showToast(e.message, 'error');
+    }
   };
 
   ARS.Pages.waitReady(() => {
+    urlState = ARS.Pages.applyListQuery({ tabsId: 'custFilterTabs', searchId: 'custSearch' });
+    activeFilter = urlState.filter;
+    searchVal = urlState.q || '';
     if (!ARS.can('customers.create')) document.getElementById('addCustBtn')?.remove();
+    ARS.Pages.openModalIfRequested('addCustomerModal');
     renderTable();
+    ARS.Pages.bindKpiFilter('kpiTotal', '/app/customers.html');
+    ARS.Pages.bindKpiFilter('kpiFleet', '/app/customers.html?status=Fleet');
+    ARS.Pages.bindKpiFilter('kpiOwner', '/app/customers.html?status=Owner-Op');
+    ARS.Pages.bindKpiFilter('kpiActive', '/app/customers.html?status=Active');
+    document.getElementById('custTable')?.addEventListener('click', (e) => {
+      if (e.target.closest('a,button')) return;
+      const tr = e.target.closest('tr[data-row-id]');
+      if (tr) window.location.href = ARS.Pages.appHref(`/app/customer-detail.html?id=${tr.dataset.rowId}`);
+    });
     ARS.Pages.bindFilters('custFilterTabs', 'custSearch', 'custCount', ({ filter, q }) => {
       if (filter !== undefined) activeFilter = filter;
       if (q !== undefined) searchVal = q;
@@ -190,7 +209,7 @@
       const phone = document.getElementById('cPhone').value.trim();
       if (!firstName || !lastName || !phone) return showToast('Name and phone required', 'error');
       try {
-        await ARS.Data.createCustomer({
+        const customer = await ARS.Data.createCustomer({
           firstName, lastName, phone,
           company: document.getElementById('cCompany').value.trim(),
           email: document.getElementById('cEmail').value.trim(),
@@ -200,7 +219,11 @@
         });
         closeModal('addCustomerModal');
         renderTable();
-        showToast('Customer added successfully!', 'success');
+        ARS.Pages.successWithView({
+          title: 'Customer added',
+          message: `${customer.name} has been added.`,
+          href: `/app/customer-detail.html?id=${customer.id}`,
+        });
       } catch (e) {
         showToast(e.message, 'error');
       }

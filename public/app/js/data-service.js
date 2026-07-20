@@ -3,10 +3,21 @@ window.ARS = window.ARS || {};
 
 const LEGACY_CUSTOMER_ID = /^C00[1-8]$/;
 const LEGACY_TRUCK_ID = /^T0(0[1-9]|10)$/;
-const LEGACY_NAMES = ['washex', 'james construction', 'reid trucking', 'lopez distribution', 'kim brothers'];
+const LEGACY_NAMES = ['washex', 'james construction'];
 const OPERATIONAL_COLLECTIONS = [
   'customers', 'trucks', 'workOrders', 'estimates', 'invoices',
   'payments', 'inventory', 'inventoryTransactions',
+];
+
+const DEFAULT_ONBOARDING_STEPS = [
+  { id: 'account', label: 'Platform account created' },
+  { id: 'i9', label: 'I-9 employment eligibility' },
+  { id: 'w4', label: 'W-4 tax withholding' },
+  { id: 'handbook', label: 'Employee handbook acknowledged' },
+  { id: 'safety', label: 'Shop safety orientation' },
+  { id: 'tools', label: 'Tools / PPE issued' },
+  { id: 'access', label: 'Shop keys / access' },
+  { id: 'training', label: 'Role training complete' },
 ];
 
 ARS.Data = {
@@ -58,20 +69,24 @@ ARS.Data = {
   async init() {
     if (ARS.isDemoMode?.()) {
       ARS.Demo?.getState?.();
-      this._techs = ['Mike Santos', 'Alex Rodriguez', 'Sarah Torres'];
+      this._techs = [
+        { uid: 'demo-mike', name: 'Mike Santos' },
+        { uid: 'demo-alex', name: 'Alex Rodriguez' },
+        { uid: 'demo-sarah', name: 'Sarah Torres' },
+      ];
       this.refreshTruckPMStatus();
       this.refreshOverdueInvoices();
       this.refreshNotifications();
       return;
     }
-    if (ARS.FirestoreSync?.listTechs) {
-      this._techs = await ARS.FirestoreSync.listTechs();
-    }
     this.refreshTruckPMStatus();
     this.refreshOverdueInvoices();
-    if (!ARS.FirestoreSync?.isActive?.()) {
-      this.refreshNotifications();
-    }
+    this.refreshNotifications();
+    // Keep tech list in sync with employee directory (and cloud query as backup)
+    this.refreshTechs().catch(() => {});
+    document.addEventListener('ars:data-changed', () => {
+      this.refreshTechsFromEmployees();
+    });
   },
 
   async _nextId(prefix, localKey) {
@@ -80,6 +95,12 @@ ARS.Data = {
     }
     const { year, num } = ARS.Store.bumpCounter(localKey || prefix.toLowerCase());
     return ARS.nextId(prefix, year, num);
+  },
+
+  async _persist(collection, item) {
+    if (!item?.id || !ARS.FirestoreSync?.isActive?.()) return item;
+    await ARS.FirestoreSync.pushItem(collection, item);
+    return item;
   },
 
   _audit(entry) {
@@ -109,8 +130,35 @@ ARS.Data = {
     );
   },
 
-  listContactSubmissions() {
-    return ARS.Store.getCollection('contactSubmissions');
+  listContactSubmissions(filters = {}) {
+    let items = ARS.Store.getCollection('contactSubmissions');
+    if (filters.status) {
+      if (filters.status === 'New') {
+        items = items.filter((l) => !l.status || l.status === 'New');
+      } else {
+        items = items.filter((l) => l.status === filters.status);
+      }
+    }
+    return items;
+  },
+
+  async updateContactSubmission(id, patch) {
+    const s = ARS.Store.load();
+    const i = s.contactSubmissions.findIndex((l) => l.id === id);
+    if (i < 0) throw new Error('Lead not found');
+    s.contactSubmissions[i] = {
+      ...s.contactSubmissions[i],
+      ...patch,
+      updatedAt: new Date().toISOString(),
+    };
+    ARS.Store.save(s);
+    const updated = s.contactSubmissions[i];
+    try {
+      await this._persist('contact_submissions', updated);
+    } catch (e) {
+      throw new Error(e.message || 'Could not save lead status to cloud');
+    }
+    return updated;
   },
 
   /* ─── CUSTOMERS ─── */
@@ -134,9 +182,15 @@ ARS.Data = {
     const trucks = ARS.Store.getCollection('trucks').filter((t) => t.customerId === c.id);
     const wos = ARS.Store.getCollection('workOrders').filter((w) => w.customerId === c.id);
     const lastWo = wos.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))[0];
-    const spent = ARS.Store.getCollection('payments')
-      .filter((p) => p.customerName === c.name || p.customerName === c.company)
-      .reduce((s, p) => s + p.amount, 0) || c.spentAmount || 0;
+    const matchedPayments = ARS.Store.getCollection('payments').filter((p) =>
+      (p.customerId && p.customerId === c.id)
+      || p.customerName === c.name
+      || (c.company && c.company !== '—' && p.customerName === c.company)
+    );
+    // Always use net payment sum when any payments match — including $0 after full refunds
+    const spent = matchedPayments.length
+      ? matchedPayments.reduce((s, p) => s + this.paymentNetAmount(p), 0)
+      : (Number(c.spentAmount) || 0);
     return {
       ...c,
       trucks: trucks.length,
@@ -153,8 +207,7 @@ ARS.Data = {
 
   async createCustomer(data) {
     const s = ARS.Store.load();
-    const { num } = ARS.Store.bumpCounter('cust');
-    const id = `C${String(num).padStart(3, '0')}`;
+    const id = await this._nextId('C', 'cust');
     const customer = {
       id,
       name: `${data.firstName} ${data.lastName}`.trim(),
@@ -172,20 +225,22 @@ ARS.Data = {
     s.customers.push(customer);
     ARS.Store.save(s);
     this._audit({ action: 'customer.create', entityId: id, entityType: 'customer' });
-    if (!ARS.FirestoreSync?.isActive?.()) this.refreshNotifications();
+    await this._persist('customers', customer);
+    this.refreshNotifications();
     return customer;
   },
 
-  updateCustomer(id, patch) {
+  async updateCustomer(id, patch) {
     const s = ARS.Store.load();
     const i = s.customers.findIndex((c) => c.id === id);
     if (i < 0) throw new Error('Customer not found');
-    s.customers[i] = { ...s.customers[i], ...patch, version: (s.customers[i].version || 1) + 1 };
+    s.customers[i] = { ...s.customers[i], ...patch, version: (s.customers[i].version || 1) + 1, updatedAt: new Date().toISOString() };
     ARS.Store.save(s);
+    await this._persist('customers', s.customers[i]);
     return s.customers[i];
   },
 
-  deactivateCustomer(id) {
+  async deactivateCustomer(id) {
     return this.updateCustomer(id, { status: 'Inactive' });
   },
 
@@ -218,8 +273,7 @@ ARS.Data = {
 
   async createTruck(data) {
     const s = ARS.Store.load();
-    const { num } = ARS.Store.bumpCounter('truck');
-    const id = `T${String(num).padStart(3, '0')}`;
+    const id = await this._nextId('T', 'truck');
     const truck = {
       id,
       unit: data.unit,
@@ -238,15 +292,22 @@ ARS.Data = {
     s.trucks.push(truck);
     ARS.Store.save(s);
     this._audit({ action: 'truck.create', entityId: id, entityType: 'truck' });
+    await this._persist('trucks', truck);
     return this.enrichTruck(truck);
   },
 
-  updateTruck(id, patch) {
+  async updateTruck(id, patch) {
     const s = ARS.Store.load();
     const i = s.trucks.findIndex((t) => t.id === id);
     if (i < 0) throw new Error('Truck not found');
-    s.trucks[i] = { ...s.trucks[i], ...patch, version: (s.trucks[i].version || 1) + 1 };
+    s.trucks[i] = {
+      ...s.trucks[i],
+      ...patch,
+      version: (s.trucks[i].version || 1) + 1,
+      updatedAt: new Date().toISOString(),
+    };
     ARS.Store.save(s);
+    await this._persist('trucks', s.trucks[i]);
     return this.enrichTruck(s.trucks[i]);
   },
 
@@ -259,12 +320,83 @@ ARS.Data = {
   },
 
   /* ─── WORK ORDERS ─── */
+
+  /** Normalize tech assignment to multi-tech shape (backward compatible with single tech/techId) */
+  getWoTechs(wo) {
+    if (!wo) return [];
+    if (Array.isArray(wo.techs) && wo.techs.length) {
+      return wo.techs
+        .map((t) => {
+          if (typeof t === 'string') return { uid: '', name: t.trim() };
+          return { uid: t.uid || '', name: String(t.name || '').trim() };
+        })
+        .filter((t) => t.name);
+    }
+    if (Array.isArray(wo.techIds) && wo.techIds.length && wo.tech) {
+      const names = String(wo.tech).split(/\s*,\s*/).filter(Boolean);
+      return wo.techIds.map((uid, i) => ({
+        uid,
+        name: names[i] || this.getTechs().find((t) => t.uid === uid)?.name || uid,
+      })).filter((t) => t.name);
+    }
+    if (wo.tech) {
+      const names = String(wo.tech).split(/\s*,\s*/).filter(Boolean);
+      if (names.length > 1) {
+        return names.map((name) => ({ uid: '', name }));
+      }
+      return [{ uid: wo.techId || '', name: names[0] }];
+    }
+    return [];
+  },
+
+  formatWoTechs(wo, empty = '—') {
+    const techs = this.getWoTechs(wo);
+    return techs.length ? techs.map((t) => t.name).join(', ') : empty;
+  },
+
+  normalizeTechAssignment(input = {}) {
+    let list = [];
+    if (Array.isArray(input.techs)) {
+      list = input.techs.map((t) => {
+        if (typeof t === 'string') return { uid: '', name: t.trim() };
+        return { uid: t.uid || '', name: String(t.name || '').trim() };
+      });
+    } else if (input.tech) {
+      const names = String(input.tech).split(/\s*,\s*/).filter(Boolean);
+      const ids = Array.isArray(input.techIds)
+        ? input.techIds
+        : (input.techId ? [input.techId] : []);
+      list = names.map((name, i) => ({ uid: ids[i] || '', name }));
+    }
+    list = list.filter((t) => t.name);
+    // de-dupe by uid or name
+    const seen = new Set();
+    list = list.filter((t) => {
+      const key = t.uid || t.name.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+    return {
+      techs: list,
+      techIds: list.map((t) => t.uid).filter(Boolean),
+      tech: list.map((t) => t.name).join(', '),
+      techId: list[0]?.uid || '',
+    };
+  },
+
+  woAssignedToUser(wo, user = ARS.Auth?.getUser?.()) {
+    if (!wo || !user) return false;
+    return this.getWoTechs(wo).some((t) =>
+      (t.uid && t.uid === user.uid) || (t.name && t.name === user.name));
+  },
+
   listWorkOrders(filters = {}) {
     let items = ARS.Store.getCollection('workOrders');
     const role = ARS.Auth?.getRole?.();
     const user = ARS.Auth?.getUser?.();
     if (role === 'technician' && user) {
-      items = items.filter((w) => w.tech === user.name);
+      items = items.filter((w) => this.woAssignedToUser(w, user));
     }
     if (filters.status) items = items.filter((w) => w.status === filters.status);
     if (filters.q) {
@@ -272,7 +404,7 @@ ARS.Data = {
       items = items.filter((w) =>
         w.id.toLowerCase().includes(q) ||
         (w.customerName || '').toLowerCase().includes(q) ||
-        (w.tech || '').toLowerCase().includes(q)
+        this.formatWoTechs(w, '').toLowerCase().includes(q)
       );
     }
     return items;
@@ -286,6 +418,7 @@ ARS.Data = {
     const settings = ARS.Store.getSettings();
     const id = await this._nextId('WO', 'wo');
     const totals = ARS.calcTotals(data.labor, data.parts, settings);
+    const techFields = this.normalizeTechAssignment(data);
     const s = ARS.Store.load();
     const wo = {
       id,
@@ -294,8 +427,7 @@ ARS.Data = {
       customerName: data.customerName,
       truckId: data.truckId || '',
       truckLabel: data.truckLabel,
-      tech: data.tech,
-      techId: data.techId || '',
+      ...techFields,
       serviceType: data.serviceType || '',
       status: data.status || 'Open',
       desc: data.desc,
@@ -305,29 +437,38 @@ ARS.Data = {
       total: totals.total,
       invoiced: false,
       estimateId: data.estimateId || null,
+      media: Array.isArray(data.media) ? data.media : [],
       version: 1,
       createdAt: new Date().toISOString(),
     };
     s.workOrders.unshift(wo);
     ARS.Store.save(s);
     this._audit({ action: 'workOrder.create', entityId: id, entityType: 'workOrder' });
-    if (!ARS.FirestoreSync?.isActive?.()) this.refreshNotifications();
+    await this._persist('workOrders', wo);
+    this.refreshNotifications();
     return wo;
   },
 
-  updateWorkOrder(id, patch) {
+  async updateWorkOrder(id, patch) {
     const s = ARS.Store.load();
     const i = s.workOrders.findIndex((w) => w.id === id);
     if (i < 0) throw new Error('Work order not found');
     const cur = s.workOrders[i];
     if (patch.version && patch.version !== cur.version) throw new Error('Conflict: record was modified by another user');
+    if (patch.status === 'Invoiced' && !cur.invoiced && !patch.invoiced) {
+      throw new Error('Use Generate Invoice to mark a work order as invoiced');
+    }
     const settings = ARS.Store.getSettings();
     const labor = patch.labor ?? cur.labor;
     const parts = patch.parts ?? cur.parts;
     const totals = ARS.calcTotals(labor, parts, settings);
+    let nextPatch = { ...patch };
+    if (patch.techs !== undefined || patch.tech !== undefined || patch.techIds !== undefined || patch.techId !== undefined) {
+      nextPatch = { ...nextPatch, ...this.normalizeTechAssignment(patch) };
+    }
     s.workOrders[i] = {
       ...cur,
-      ...patch,
+      ...nextPatch,
       labor: totals.labor,
       parts: totals.parts,
       tax: totals.tax,
@@ -337,7 +478,8 @@ ARS.Data = {
     };
     ARS.Store.save(s);
     if (patch.status === 'Completed') this.deductInventoryForWO(s.workOrders[i]);
-    if (!ARS.FirestoreSync?.isActive?.()) this.refreshNotifications();
+    await this._persist('workOrders', s.workOrders[i]);
+    this.refreshNotifications();
     return s.workOrders[i];
   },
 
@@ -386,13 +528,18 @@ ARS.Data = {
     };
     s.invoices.unshift(invoice);
     const wi = s.workOrders.findIndex((w) => w.id === woId);
+    let updatedWo = null;
     if (wi >= 0) {
       s.workOrders[wi].invoiced = true;
       s.workOrders[wi].status = 'Invoiced';
+      s.workOrders[wi].updatedAt = new Date().toISOString();
+      updatedWo = s.workOrders[wi];
     }
     ARS.Store.save(s);
     this._audit({ action: 'invoice.create', entityId: id, entityType: 'invoice', workOrderId: woId });
-    if (!ARS.FirestoreSync?.isActive?.()) this.refreshNotifications();
+    await this._persist('invoices', invoice);
+    if (updatedWo) await this._persist('workOrders', updatedWo);
+    this.refreshNotifications();
     return invoice;
   },
 
@@ -400,6 +547,7 @@ ARS.Data = {
   listEstimates(filters = {}) {
     let items = ARS.Store.getCollection('estimates');
     if (filters.status) items = items.filter((e) => e.status === filters.status);
+    if (filters.customerId) items = items.filter((e) => e.customerId === filters.customerId);
     if (filters.q) {
       const q = filters.q.toLowerCase();
       items = items.filter((e) =>
@@ -408,6 +556,10 @@ ARS.Data = {
       );
     }
     return items;
+  },
+
+  getEstimate(id) {
+    return ARS.Store.getCollection('estimates').find((e) => e.id === id) || null;
   },
 
   async createEstimate(data) {
@@ -422,6 +574,7 @@ ARS.Data = {
       customerId: data.customerId || '',
       truckLabel: data.truckLabel,
       desc: data.desc,
+      notes: data.notes || '',
       labor: totals.labor,
       parts: totals.parts,
       total: totals.total,
@@ -431,17 +584,24 @@ ARS.Data = {
     };
     s.estimates.unshift(est);
     ARS.Store.save(s);
-    if (!ARS.FirestoreSync?.isActive?.()) this.refreshNotifications();
+    await this._persist('estimates', est);
+    this.refreshNotifications();
     return est;
   },
 
-  updateEstimate(id, patch) {
+  async updateEstimate(id, patch) {
     const s = ARS.Store.load();
     const i = s.estimates.findIndex((e) => e.id === id);
     if (i < 0) throw new Error('Estimate not found');
-    s.estimates[i] = { ...s.estimates[i], ...patch, version: (s.estimates[i].version || 1) + 1 };
+    s.estimates[i] = {
+      ...s.estimates[i],
+      ...patch,
+      version: (s.estimates[i].version || 1) + 1,
+      updatedAt: new Date().toISOString(),
+    };
     ARS.Store.save(s);
-    if (!ARS.FirestoreSync?.isActive?.()) this.refreshNotifications();
+    await this._persist('estimates', s.estimates[i]);
+    this.refreshNotifications();
     return s.estimates[i];
   },
 
@@ -452,13 +612,20 @@ ARS.Data = {
       customerName: est.customerName,
       customerId: est.customerId,
       truckLabel: est.truckLabel,
+      truckId: est.truckId,
       desc: est.desc,
       labor: est.labor,
       parts: est.parts,
       status: 'Open',
       estimateId: estId,
+      media: (est.media || []).map((m) => ({
+        ...m,
+        id: ARS.uid().replace(/^id_/, ''),
+        copiedFrom: `estimates/${estId}`,
+        uploadedAt: new Date().toISOString(),
+      })),
     });
-    this.updateEstimate(estId, { status: 'Converted', workOrderId: wo.id });
+    await this.updateEstimate(estId, { status: 'Converted', workOrderId: wo.id });
     return wo;
   },
 
@@ -500,16 +667,33 @@ ARS.Data = {
     if (changed) ARS.Store.save(s);
   },
 
-  writeOffInvoice(id, reason) {
+  async writeOffInvoice(id, reason) {
     if (!ARS.can('invoices.writeOff')) throw new Error('Permission denied');
     const s = ARS.Store.load();
     const i = s.invoices.findIndex((inv) => inv.id === id);
     if (i < 0) throw new Error('Invoice not found');
     s.invoices[i].status = 'Written Off';
     s.invoices[i].writeOffReason = reason;
+    s.invoices[i].updatedAt = new Date().toISOString();
     ARS.Store.save(s);
     this._audit({ action: 'invoice.writeOff', entityId: id, entityType: 'invoice', reason });
-    if (!ARS.FirestoreSync?.isActive?.()) this.refreshNotifications();
+    await this._persist('invoices', s.invoices[i]);
+    this.refreshNotifications();
+    return s.invoices[i];
+  },
+
+  async updateInvoice(id, patch) {
+    const s = ARS.Store.load();
+    const i = s.invoices.findIndex((inv) => inv.id === id);
+    if (i < 0) throw new Error('Invoice not found');
+    s.invoices[i] = {
+      ...s.invoices[i],
+      ...patch,
+      version: (s.invoices[i].version || 1) + 1,
+      updatedAt: new Date().toISOString(),
+    };
+    ARS.Store.save(s);
+    await this._persist('invoices', s.invoices[i]);
     return s.invoices[i];
   },
 
@@ -520,10 +704,178 @@ ARS.Data = {
       const q = filters.q.toLowerCase();
       items = items.filter((p) =>
         p.id.toLowerCase().includes(q) ||
-        (p.customerName || '').toLowerCase().includes(q)
+        (p.customerName || '').toLowerCase().includes(q) ||
+        (p.invoiceId || '').toLowerCase().includes(q)
       );
     }
-    return items.map((p) => ({ ...p, amountDisplay: ARS.fmtMoney(p.amount) }));
+    if (filters.status) items = items.filter((p) => p.status === filters.status);
+    return items.map((p) => this.enrichPayment(p));
+  },
+
+  paymentNetAmount(p) {
+    const amount = Number(p?.amount) || 0;
+    const refunded = Number(p?.refundedAmount) || 0;
+    return Math.max(0, Math.round((amount - refunded) * 100) / 100);
+  },
+
+  /** Shared payment KPIs — always net of refunds; matches Payments page tables */
+  getPaymentKPIs() {
+    const payments = this.listPayments();
+    const now = new Date();
+    const mtdStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const inMtd = (p) => {
+      const d = new Date(p.createdAt || p.date);
+      return !isNaN(d) && d >= mtdStart;
+    };
+    const mtd = payments.filter(inMtd);
+    const net = (p) => this.paymentNetAmount(p);
+    const isActiveCharge = (p) => net(p) > 0.01;
+    const isFullyRefunded = (p) => {
+      const refunded = Number(p.refundedAmount) || 0;
+      return refunded > 0.01 && net(p) <= 0.01;
+    };
+    const isPartialRefund = (p) => (Number(p.refundedAmount) || 0) > 0.01 && net(p) > 0.01;
+
+    const receivedMTD = mtd.reduce((s, p) => s + net(p), 0);
+    const stripeMtd = mtd.filter((p) => /stripe/i.test(p.method || ''));
+    const stripeReceivedMTD = stripeMtd.reduce((s, p) => s + net(p), 0);
+    const successful = mtd.filter(isActiveCharge);
+    const fullyRefunded = mtd.filter(isFullyRefunded);
+    const partialRefunded = mtd.filter(isPartialRefund);
+
+    return {
+      receivedMTD,
+      stripeReceivedMTD,
+      stripeChargeCount: stripeMtd.filter(isActiveCharge).length,
+      successfulChargeCount: successful.length,
+      fullyRefundedCount: fullyRefunded.length,
+      partialRefundedCount: partialRefunded.length,
+      mtdPaymentCount: mtd.length,
+      avgPayment: successful.length ? receivedMTD / successful.length : 0,
+      refundedMTD: mtd.reduce((s, p) => s + (Number(p.refundedAmount) || 0), 0),
+    };
+  },
+
+  /** Invoice KPIs aligned with invoice list balances / amountPaid */
+  getInvoiceKPIs() {
+    this.refreshOverdueInvoices();
+    const invoices = this.listInvoices();
+    const now = new Date();
+    const mtdStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const inMtd = (inv) => {
+      const d = new Date(inv.createdAt || inv.date);
+      return !isNaN(d) && d >= mtdStart;
+    };
+    const mtdInvoices = invoices.filter(inMtd);
+    const invoicedMTD = mtdInvoices.reduce((s, inv) => s + (Number(inv.total) || 0), 0);
+    // Cash collected on invoices (all-time amountPaid — reflects refunds)
+    const collectedTotal = invoices
+      .filter((inv) => inv.status !== 'Written Off')
+      .reduce((s, inv) => s + (Number(inv.amountPaid) || 0), 0);
+    const collectedMTD = mtdInvoices
+      .filter((inv) => inv.status !== 'Written Off')
+      .reduce((s, inv) => s + (Number(inv.amountPaid) || 0), 0);
+    const paidInFull = invoices
+      .filter((inv) => inv.status === 'Paid')
+      .reduce((s, inv) => s + (Number(inv.amountPaid) || inv.total || 0), 0);
+    const awaiting = invoices
+      .filter((inv) => ['Sent', 'Partially Paid'].includes(inv.status))
+      .reduce((s, inv) => s + (inv.balance || 0), 0);
+    const overdueTotal = invoices
+      .filter((inv) => inv.status === 'Overdue')
+      .reduce((s, inv) => s + (inv.balance || 0), 0);
+    const overdueCount = invoices.filter((inv) => inv.status === 'Overdue').length;
+
+    return {
+      invoicedMTD,
+      collectedTotal,
+      collectedMTD,
+      paidInFull,
+      awaiting,
+      overdueTotal,
+      overdueCount,
+      invoiceCount: invoices.length,
+    };
+  },
+
+  enrichPayment(p) {
+    const refundedAmount = Number(p.refundedAmount) || 0;
+    const amount = Number(p.amount) || 0;
+    const refundable = Math.max(0, Math.round((amount - refundedAmount) * 100) / 100);
+    let status = p.status || 'Completed';
+    if (refundedAmount > 0.01 && refundable <= 0.01) status = 'Refunded';
+    else if (refundedAmount > 0.01 && status === 'Completed') status = 'Partially Refunded';
+    const statusLabel = status === 'Refunded' ? 'Refund Complete' : status;
+    return {
+      ...p,
+      status,
+      statusLabel,
+      refundedAmount,
+      refundable,
+      amountDisplay: ARS.fmtMoney(amount),
+      refundedDisplay: ARS.fmtMoney(refundedAmount),
+      netDisplay: ARS.fmtMoney(amount - refundedAmount),
+      isRefunded: status === 'Refunded' || status === 'Partially Refunded' || refundedAmount > 0.01,
+      canRefund: refundable > 0.01 && ['Completed', 'Partially Refunded'].includes(status),
+    };
+  },
+
+  /** Optimistic local update after a successful Stripe/demo refund */
+  applyLocalRefundResult(paymentId, result = {}) {
+    const s = ARS.Store.load();
+    const i = s.payments.findIndex((p) => p.id === paymentId);
+    if (i < 0) return null;
+    const pay = s.payments[i];
+    const delta = Number(result.amount) || 0;
+    const nextRefunded = result.refundedAmount != null
+      ? Number(result.refundedAmount)
+      : Math.round(((Number(pay.refundedAmount) || 0) + delta) * 100) / 100;
+    const remaining = Math.max(0, Math.round(((Number(pay.amount) || 0) - nextRefunded) * 100) / 100);
+    const status = result.status
+      || (remaining <= 0.01 ? 'Refunded' : 'Partially Refunded');
+    s.payments[i] = {
+      ...pay,
+      refundedAmount: nextRefunded,
+      refundableAmount: remaining,
+      status,
+      lastRefundAt: new Date().toISOString(),
+      lastRefundId: result.refundId || pay.lastRefundId || null,
+      stripeRefundIds: result.refundId
+        ? [...new Set([...(pay.stripeRefundIds || []), result.refundId])]
+        : (pay.stripeRefundIds || []),
+    };
+
+    if (pay.invoiceId && delta > 0) {
+      const invIdx = s.invoices.findIndex((inv) => inv.id === pay.invoiceId);
+      if (invIdx >= 0 && s.invoices[invIdx].status !== 'Written Off') {
+        const inv = s.invoices[invIdx];
+        const newPaid = Math.max(0, Math.round(((inv.amountPaid || 0) - delta) * 100) / 100);
+        const bal = Math.round(((inv.total || 0) - newPaid) * 100) / 100;
+        let invStatus = inv.status;
+        if (newPaid <= 0.01) {
+          const due = inv.due ? new Date(inv.due) : null;
+          invStatus = (due && !isNaN(due) && due < new Date()) ? 'Overdue' : 'Sent';
+        } else if (bal > 0.01) {
+          invStatus = 'Partially Paid';
+        } else {
+          invStatus = 'Paid';
+        }
+        s.invoices[invIdx] = { ...inv, amountPaid: newPaid, status: invStatus };
+      }
+    }
+
+    ARS.Store.save(s);
+    return this.enrichPayment(s.payments[i]);
+  },
+
+  getPayment(id) {
+    const p = ARS.Store.getCollection('payments').find((x) => x.id === id);
+    return p ? this.enrichPayment(p) : null;
+  },
+
+  paymentRefundable(payment) {
+    const p = typeof payment === 'string' ? this.getPayment(payment) : this.enrichPayment(payment);
+    return p?.refundable || 0;
   },
 
   async recordPayment() {
@@ -557,7 +909,9 @@ ARS.Data = {
       amount: payAmount,
       method: 'Demo Stripe',
       status: 'Completed',
+      refundedAmount: 0,
       stripeSessionId: `demo_cs_${ARS.uid()}`,
+      stripePaymentIntentId: `demo_pi_${ARS.uid()}`,
       createdAt: now.toISOString(),
       createdBy: ARS.Demo?.EMAIL || 'demo',
     });
@@ -575,6 +929,75 @@ ARS.Data = {
     this._audit({ action: 'payment.demo', entityId: payId, entityType: 'payment', invoiceId, amount: payAmount });
     this.refreshNotifications();
     return { paymentId: payId, invoice: s.invoices[invIdx] };
+  },
+
+  async recordDemoRefund(paymentId, amount, reason) {
+    if (!ARS.isDemoMode?.()) throw new Error('Demo refunds are only available in demo mode.');
+    if (!ARS.can('payments.refund')) throw new Error('Permission denied');
+
+    const refundAmount = Number(amount);
+    if (!refundAmount || refundAmount <= 0) throw new Error('Invalid refund amount');
+
+    const s = ARS.Store.load();
+    const payIdx = s.payments.findIndex((p) => p.id === paymentId);
+    if (payIdx < 0) throw new Error('Payment not found');
+
+    const pay = s.payments[payIdx];
+    const already = Number(pay.refundedAmount) || 0;
+    const refundable = Math.round(((Number(pay.amount) || 0) - already) * 100) / 100;
+    if (refundAmount > refundable + 0.01) {
+      throw new Error(`Amount cannot exceed refundable balance (${ARS.fmtMoney(refundable)})`);
+    }
+
+    const nextRefunded = Math.round((already + refundAmount) * 100) / 100;
+    const remaining = Math.round(((Number(pay.amount) || 0) - nextRefunded) * 100) / 100;
+    const refundId = `demo_re_${ARS.uid()}`;
+
+    s.payments[payIdx] = {
+      ...pay,
+      refundedAmount: nextRefunded,
+      refundableAmount: remaining,
+      status: remaining <= 0.01 ? 'Refunded' : 'Partially Refunded',
+      stripeRefundIds: [...(pay.stripeRefundIds || []), refundId],
+      lastRefundAt: new Date().toISOString(),
+      lastRefundReason: reason || 'demo_refund',
+      lastRefundId: refundId,
+    };
+
+    const invIdx = s.invoices.findIndex((inv) => inv.id === pay.invoiceId);
+    if (invIdx >= 0 && s.invoices[invIdx].status !== 'Written Off') {
+      const inv = s.invoices[invIdx];
+      const newPaid = Math.max(0, Math.round(((inv.amountPaid || 0) - refundAmount) * 100) / 100);
+      const bal = Math.round(((inv.total || 0) - newPaid) * 100) / 100;
+      let status = inv.status;
+      if (newPaid <= 0.01) {
+        const due = inv.due ? new Date(inv.due) : null;
+        status = (due && !isNaN(due) && due < new Date()) ? 'Overdue' : 'Sent';
+      } else if (bal > 0.01) {
+        status = 'Partially Paid';
+      } else {
+        status = 'Paid';
+      }
+      s.invoices[invIdx] = { ...inv, amountPaid: newPaid, status, version: (inv.version || 1) + 1 };
+    }
+
+    ARS.Store.save(s);
+    this._audit({
+      action: 'payment.refund',
+      entityId: paymentId,
+      entityType: 'payment',
+      invoiceId: pay.invoiceId,
+      amount: refundAmount,
+      reason,
+    });
+    this.refreshNotifications();
+    return {
+      ok: true,
+      refundId,
+      paymentId,
+      amount: refundAmount,
+      status: s.payments[payIdx].status,
+    };
   },
 
   /* ─── INVENTORY ─── */
@@ -597,8 +1020,7 @@ ARS.Data = {
 
   async createPart(data) {
     const s = ARS.Store.load();
-    const { num } = ARS.Store.bumpCounter('part');
-    const id = `P${String(num).padStart(3, '0')}`;
+    const id = await this._nextId('P', 'part');
     const part = {
       id,
       partNo: data.partNo,
@@ -608,32 +1030,57 @@ ARS.Data = {
       min: Number(data.min) || 1,
       cost: Number(data.cost) || 0,
       price: Number(data.price) || 0,
+      supplier: data.supplier || '',
       status: ARS.inventoryStatus(Number(data.qty) || 0, Number(data.min) || 1),
       version: 1,
       createdAt: new Date().toISOString(),
     };
     s.inventory.push(part);
     ARS.Store.save(s);
-    if (!ARS.FirestoreSync?.isActive?.()) this.refreshNotifications();
+    await this._persist('inventory', part);
+    this.refreshNotifications();
     return part;
   },
 
-  adjustStock(partId, delta, reason) {
+  async updatePart(id, patch) {
+    const s = ARS.Store.load();
+    const i = s.inventory.findIndex((p) => p.id === id);
+    if (i < 0) throw new Error('Part not found');
+    const next = {
+      ...s.inventory[i],
+      ...patch,
+      version: (s.inventory[i].version || 1) + 1,
+      updatedAt: new Date().toISOString(),
+    };
+    if (next.qty != null || next.min != null) {
+      next.status = ARS.inventoryStatus(Number(next.qty) || 0, Number(next.min) || 1);
+    }
+    s.inventory[i] = next;
+    ARS.Store.save(s);
+    await this._persist('inventory', s.inventory[i]);
+    return s.inventory[i];
+  },
+
+  async adjustStock(partId, delta, reason) {
     const s = ARS.Store.load();
     const i = s.inventory.findIndex((p) => p.id === partId);
     if (i < 0) throw new Error('Part not found');
-    s.inventory[i].qty = Math.max(0, s.inventory[i].qty + delta);
+    s.inventory[i].qty = Math.max(0, s.inventory[i].qty + Number(delta));
     s.inventory[i].status = ARS.inventoryStatus(s.inventory[i].qty, s.inventory[i].min);
+    s.inventory[i].updatedAt = new Date().toISOString();
     if (!s.inventoryTransactions) s.inventoryTransactions = [];
-    s.inventoryTransactions.unshift({
+    const tx = {
       id: ARS.uid(),
       partId,
-      delta,
+      delta: Number(delta),
       reason: reason || 'adjustment',
       at: new Date().toISOString(),
-    });
+    };
+    s.inventoryTransactions.unshift(tx);
     ARS.Store.save(s);
-    if (!ARS.FirestoreSync?.isActive?.()) this.refreshNotifications();
+    await this._persist('inventory', s.inventory[i]);
+    await this._persist('inventoryTransactions', tx);
+    this.refreshNotifications();
     return s.inventory[i];
   },
 
@@ -642,91 +1089,158 @@ ARS.Data = {
   },
 
   /* ─── NOTIFICATIONS ─── */
+  _isDerivedNotificationId(id) {
+    return /^(overdue_|stock_|wo_|est_)/.test(String(id || ''));
+  },
+
   listNotifications() {
-    return ARS.Store.getCollection('notifications');
+    return ARS.Store.getCollection('notifications')
+      .slice()
+      .sort((a, b) => {
+        if (!!a.read !== !!b.read) return a.read ? 1 : -1;
+        return new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
+      });
   },
 
   refreshNotifications() {
     const s = ARS.Store.load();
     const uid = ARS.Auth?.getUser?.()?.uid || 'local';
+    const reads = { ...(s.notificationReads || {}) };
+    (s.notifications || []).forEach((n) => {
+      if (n?.id && n.read) reads[n.id] = n.readAt || reads[n.id] || true;
+    });
     const notes = [];
     const now = new Date().toISOString();
 
-    s.invoices.filter((inv) => inv.status === 'Overdue').forEach((inv) => {
+    (s.invoices || []).filter((inv) => inv.status === 'Overdue').forEach((inv) => {
+      const id = `overdue_${inv.id}_${uid}`;
       notes.push({
-        id: `overdue_${inv.id}_${uid}`,
+        id,
         userId: uid,
         type: 'warning',
         message: `Invoice ${inv.id} overdue — ${inv.customerName}`,
         entityType: 'invoice',
         entityId: inv.id,
         href: `/app/invoice-detail.html?id=${inv.id}`,
-        read: false,
-        createdAt: now,
+        read: !!reads[id],
+        readAt: reads[id] || null,
+        createdAt: inv.due || inv.updatedAt || now,
+        source: 'derived',
       });
     });
 
-    s.inventory.filter((p) => ARS.inventoryStatus(p.qty, p.min) !== 'In Stock').forEach((p) => {
+    (s.inventory || []).filter((p) => ARS.inventoryStatus(p.qty, p.min) !== 'In Stock').forEach((p) => {
       const status = ARS.inventoryStatus(p.qty, p.min);
+      const statusParam = status === 'Out of Stock' ? 'Out%20of%20Stock' : 'attention';
+      const id = `stock_${p.id}_${uid}`;
       notes.push({
-        id: `stock_${p.id}_${uid}`,
+        id,
         userId: uid,
         type: 'warning',
         message: `${p.desc} is ${status.toLowerCase()} (${p.qty} on hand)`,
         entityType: 'inventory',
         entityId: p.id,
-        href: '/app/inventory.html',
-        read: false,
-        createdAt: now,
+        href: `/app/inventory.html?status=${statusParam}&highlight=${encodeURIComponent(p.id)}`,
+        read: !!reads[id],
+        readAt: reads[id] || null,
+        createdAt: p.updatedAt || now,
+        source: 'derived',
       });
     });
 
-    s.workOrders.filter((w) => ['Open', 'In Progress', 'Waiting Parts'].includes(w.status)).forEach((w) => {
+    (s.workOrders || []).filter((w) => ['Open', 'In Progress', 'Waiting Parts'].includes(w.status)).forEach((w) => {
+      const id = `wo_${w.id}_${uid}`;
       notes.push({
-        id: `wo_${w.id}_${uid}`,
+        id,
         userId: uid,
         type: 'info',
         message: `Work order ${w.id} — ${w.status} (${w.customerName})`,
         entityType: 'workOrder',
         entityId: w.id,
         href: `/app/work-order-detail.html?id=${w.id}`,
-        read: false,
-        createdAt: now,
+        read: !!reads[id],
+        readAt: reads[id] || null,
+        createdAt: w.updatedAt || w.createdAt || now,
+        source: 'derived',
       });
     });
 
-    s.estimates.filter((e) => e.status === 'Pending' || e.status === 'Sent').forEach((e) => {
+    (s.estimates || []).filter((e) => e.status === 'Pending' || e.status === 'Sent').forEach((e) => {
+      const id = `est_${e.id}_${uid}`;
       notes.push({
-        id: `est_${e.id}_${uid}`,
+        id,
         userId: uid,
         type: 'info',
         message: `Estimate ${e.id} awaiting response — ${e.customerName}`,
         entityType: 'estimate',
         entityId: e.id,
-        href: '/app/estimates.html',
-        read: false,
-        createdAt: now,
+        href: `/app/estimate-detail.html?id=${e.id}`,
+        read: !!reads[id],
+        readAt: reads[id] || null,
+        createdAt: e.updatedAt || e.createdAt || now,
+        source: 'derived',
       });
     });
 
-    s.notifications = notes;
-    ARS.Store.save(s);
+    const remote = (s.notifications || []).filter((n) => n?.id && !this._isDerivedNotificationId(n.id));
+    remote.forEach((n) => {
+      if (reads[n.id]) {
+        n.read = true;
+        n.readAt = n.readAt || reads[n.id];
+      }
+    });
+
+    const next = [...notes, ...remote].sort(
+      (a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)
+    );
+
+    const prevSig = JSON.stringify((s.notifications || []).map((n) => [n.id, !!n.read, n.message]));
+    const nextSig = JSON.stringify(next.map((n) => [n.id, !!n.read, n.message]));
+    if (prevSig === nextSig && JSON.stringify(s.notificationReads || {}) === JSON.stringify(reads)) {
+      return;
+    }
+
+    s.notifications = next;
+    s.notificationReads = reads;
+    ARS.Store.save(s, { silent: true });
+    document.dispatchEvent(new CustomEvent('ars:notifications-changed'));
   },
 
   async markNotificationRead(id) {
-    if (ARS.FirestoreSync?.isActive?.()) {
-      await ARS.FirestoreSync.markNotificationRead(id);
-      return;
-    }
+    if (!id) return;
     const s = ARS.Store.load();
-    const n = s.notifications.find((x) => x.id === id);
-    if (n) n.read = true;
-    ARS.Store.save(s);
+    const readAt = new Date().toISOString();
+    s.notificationReads = { ...(s.notificationReads || {}), [id]: readAt };
+    const n = (s.notifications || []).find((x) => x.id === id);
+    if (n) {
+      n.read = true;
+      n.readAt = readAt;
+    }
+    ARS.Store.save(s, { silent: true });
+    document.dispatchEvent(new CustomEvent('ars:notifications-changed'));
+
+    if (ARS.FirestoreSync?.isActive?.() && !this._isDerivedNotificationId(id)) {
+      await ARS.FirestoreSync.markNotificationRead(id);
+    }
   },
 
   async markAllNotificationsRead() {
     const notes = this.listNotifications().filter((n) => !n.read);
-    await Promise.all(notes.map((n) => this.markNotificationRead(n.id)));
+    for (const n of notes) {
+      await this.markNotificationRead(n.id);
+    }
+  },
+
+  /* ─── SETTINGS ─── */
+  async saveShopSettings(patch) {
+    ARS.Store.setSettings(patch);
+    const s = ARS.Store.getSettings();
+    if (ARS.FirestoreSync?.isActive?.() && ARS.FirestoreSync._db && ARS.FirestoreSync._mods) {
+      const { doc, setDoc } = ARS.FirestoreSync._mods;
+      await setDoc(doc(ARS.FirestoreSync._db, 'settings', 'shop'), s, { merge: true });
+    }
+    this._audit({ action: 'settings.update', entityType: 'settings' });
+    return s;
   },
 
   /* ─── CONTACT ─── */
@@ -738,32 +1252,269 @@ ARS.Data = {
     return sub;
   },
 
+  /* ─── EMPLOYEES ─── */
+  defaultOnboarding() {
+    return DEFAULT_ONBOARDING_STEPS.map((s) => ({ ...s, done: false }));
+  },
+
+  enrichEmployee(e) {
+    const onboarding = (e.onboarding && e.onboarding.length) ? e.onboarding : this.defaultOnboarding();
+    const total = onboarding.length;
+    const done = onboarding.filter((o) => o.done).length;
+    return {
+      ...e,
+      onboarding,
+      onboardingDone: done,
+      onboardingTotal: total,
+      onboardingPct: total ? Math.round((done / total) * 100) : 0,
+      status: e.status || 'Active',
+      employmentType: e.employmentType || 'Full-time',
+      emergencyContact: e.emergencyContact || { name: '', phone: '' },
+      certifications: e.certifications || [],
+      media: e.media || [],
+    };
+  },
+
+  listEmployees(filters = {}) {
+    let items = ARS.Store.getCollection('employees').map((e) => this.enrichEmployee(e));
+    if (filters.status) items = items.filter((e) => e.status === filters.status);
+    if (filters.role) items = items.filter((e) => e.role === filters.role);
+    if (filters.onboarding === 'incomplete') items = items.filter((e) => e.onboardingPct < 100);
+    if (filters.q) {
+      const q = filters.q.toLowerCase();
+      items = items.filter((e) =>
+        (e.name || '').toLowerCase().includes(q) ||
+        (e.email || '').toLowerCase().includes(q) ||
+        (e.jobTitle || '').toLowerCase().includes(q) ||
+        (e.department || '').toLowerCase().includes(q) ||
+        (e.phone || '').includes(q)
+      );
+    }
+    return items;
+  },
+
+  getEmployee(uid) {
+    const e = ARS.Store.getCollection('employees').find((x) => x.uid === uid || x.id === uid);
+    return e ? this.enrichEmployee(e) : null;
+  },
+
+  async createEmployee(payload) {
+    if (ARS.isDemoMode?.()) {
+      const res = this._createDemoEmployee(payload);
+      this.refreshTechsFromEmployees();
+      return res;
+    }
+    const res = await ARS.FirestoreSync.createEmployee(payload);
+    // Optimistic local insert so tech dropdowns update immediately
+    const s = ARS.Store.load();
+    const now = new Date().toISOString();
+    const employee = {
+      uid: res.uid,
+      id: res.uid,
+      name: payload.name,
+      email: payload.email,
+      phone: payload.phone || '',
+      role: payload.role || 'technician',
+      jobTitle: payload.jobTitle || '',
+      hireDate: payload.hireDate || '',
+      department: payload.department || '',
+      status: 'Active',
+      active: true,
+      archived: false,
+      employmentType: 'Full-time',
+      emergencyContact: { name: '', phone: '' },
+      address: '',
+      certifications: [],
+      media: [],
+      createdAt: now,
+      updatedAt: now,
+    };
+    s.employees = [...(s.employees || []).filter((e) => e.uid !== res.uid && e.id !== res.uid), employee];
+    ARS.Store.save(s);
+    this._audit({ action: 'employee.create', entityId: res.uid, entityType: 'employee' });
+    await this.refreshTechs();
+    document.dispatchEvent(new CustomEvent('ars:data-changed'));
+    return res;
+  },
+
+  async updateEmployee(uid, patch) {
+    if (ARS.isDemoMode?.()) {
+      const res = this._updateDemoEmployee(uid, patch);
+      this.refreshTechsFromEmployees();
+      return res;
+    }
+    const res = await ARS.FirestoreSync.updateEmployee(uid, patch);
+    this._audit({ action: 'employee.update', entityId: uid, entityType: 'employee' });
+    await this.refreshTechs();
+    return this.getEmployee(uid) || res;
+  },
+
+  async sendEmployeePasswordReset(uid) {
+    const e = this.getEmployee(uid);
+    if (ARS.isDemoMode?.()) {
+      return { ok: true, email: e?.email || '', passwordResetSent: true, demo: true };
+    }
+    const res = await ARS.FirestoreSync.sendEmployeePasswordReset(uid, e?.email);
+    this._audit({ action: 'employee.password_reset', entityId: uid, entityType: 'employee' });
+    return res;
+  },
+
+  async archiveEmployee(uid) {
+    if (ARS.isDemoMode?.()) {
+      const res = this._updateDemoEmployee(uid, {
+        status: 'Archived', active: false, archived: true,
+        archivedAt: new Date().toISOString(),
+      });
+      this.refreshTechsFromEmployees();
+      return res;
+    }
+    const res = await ARS.FirestoreSync.archiveEmployee(uid);
+    this._audit({ action: 'employee.archive', entityId: uid, entityType: 'employee' });
+    await this.refreshTechs();
+    return res;
+  },
+
+  async unarchiveEmployee(uid) {
+    if (ARS.isDemoMode?.()) {
+      const res = this._updateDemoEmployee(uid, {
+        status: 'Active', active: true, archived: false,
+        archivedAt: null, archivedBy: null,
+      });
+      this.refreshTechsFromEmployees();
+      return res;
+    }
+    const res = await ARS.FirestoreSync.unarchiveEmployee(uid);
+    this._audit({ action: 'employee.unarchive', entityId: uid, entityType: 'employee' });
+    await this.refreshTechs();
+    return res;
+  },
+
+  async deleteEmployee(uid) {
+    if (ARS.isDemoMode?.()) {
+      const s = ARS.Store.load();
+      s.employees = (s.employees || []).filter((e) => e.uid !== uid && e.id !== uid);
+      ARS.Store.save(s);
+      this._audit({ action: 'employee.delete', entityId: uid, entityType: 'employee' });
+      return { ok: true, uid, deleted: true };
+    }
+    const res = await ARS.FirestoreSync.deleteEmployee(uid);
+    const s = ARS.Store.load();
+    s.employees = (s.employees || []).filter((e) => e.uid !== uid && e.id !== uid);
+    ARS.Store.save(s);
+    this._audit({ action: 'employee.delete', entityId: uid, entityType: 'employee' });
+    return res;
+  },
+
+  _createDemoEmployee(payload) {
+    const s = ARS.Store.load();
+    const uid = `demo_emp_${ARS.uid().replace(/^id_/, '')}`;
+    const defaultPassword = 'AlexRoadHire!';
+    const now = new Date().toISOString();
+    const employee = {
+      uid,
+      id: uid,
+      name: payload.name,
+      email: payload.email,
+      phone: payload.phone || '',
+      role: payload.role || 'technician',
+      jobTitle: payload.jobTitle || '',
+      hireDate: payload.hireDate || '',
+      department: payload.department || '',
+      status: 'Active',
+      employmentType: 'Full-time',
+      emergencyContact: { name: '', phone: '' },
+      address: '',
+      certifications: [],
+      schedule: {
+        mon: '7:00 AM – 3:30 PM', tue: '7:00 AM – 3:30 PM', wed: '7:00 AM – 3:30 PM',
+        thu: '7:00 AM – 3:30 PM', fri: '7:00 AM – 3:30 PM', sat: 'Off', sun: 'Off', notes: '',
+      },
+      onboarding: [{ id: 'account', label: 'Platform account created', done: true, doneAt: now }, ...this.defaultOnboarding().slice(1)],
+      media: [],
+      active: true,
+      archived: false,
+      createdAt: now,
+      updatedAt: now,
+      createdBy: ARS.Auth?.getUser?.()?.uid || 'demo',
+    };
+    s.employees = [...(s.employees || []), employee];
+    ARS.Store.save(s);
+    this._audit({ action: 'employee.create', entityId: uid, entityType: 'employee' });
+    return { ok: true, uid, email: employee.email, defaultPassword, role: employee.role, passwordResetSent: true };
+  },
+
+  _updateDemoEmployee(uid, patch) {
+    const s = ARS.Store.load();
+    const i = (s.employees || []).findIndex((e) => e.uid === uid || e.id === uid);
+    if (i < 0) throw new Error('Employee not found');
+    const next = { ...s.employees[i], ...patch, updatedAt: new Date().toISOString() };
+    if (next.status === 'Terminated' || next.status === 'Archived') next.active = false;
+    else if (patch.status) next.active = true;
+    s.employees[i] = next;
+    ARS.Store.save(s);
+    this._audit({ action: 'employee.update', entityId: uid, entityType: 'employee' });
+    return this.enrichEmployee(next);
+  },
+
+  /** Merge local + cloud audit log for CSV export, normalized to shared columns */
+  async fetchAuditLogForExport() {
+    const empByUid = {};
+    this.listEmployees().forEach((e) => { empByUid[e.uid] = e.email; });
+
+    const normalize = (a) => ({
+      at: a.at || '',
+      action: a.action || '',
+      entityType: a.entityType || (a.action || '').split('.')[0] || '',
+      entityId: a.entityId || '',
+      userId: a.userId || '',
+      by: a.by || empByUid[a.userId] || a.userId || 'system',
+      notes: a.reason || a.notes || '',
+    });
+
+    const local = ARS.Store.getCollection('auditLog').map(normalize);
+    if (ARS.isDemoMode?.() || !ARS.FirestoreSync?.isActive?.()) return local;
+
+    try {
+      const cloud = (await ARS.FirestoreSync.listAuditLog()).map(normalize);
+      const seen = new Set();
+      const merged = [];
+      [...cloud, ...local].forEach((row) => {
+        const key = `${row.at}_${row.action}_${row.entityId}_${row.userId}`;
+        if (seen.has(key)) return;
+        seen.add(key);
+        merged.push(row);
+      });
+      return merged.sort((a, b) => new Date(b.at) - new Date(a.at));
+    } catch (e) {
+      console.warn('listAuditLog failed, using local audit log only:', e.message);
+      return local;
+    }
+  },
+
   /* ─── DASHBOARD & REPORTS ─── */
   getDashboardKPIs() {
     const wos = ARS.Store.getCollection('workOrders');
-    const invoices = ARS.Store.getCollection('invoices');
-    const payments = ARS.Store.getCollection('payments');
+    const invoices = this.listInvoices();
     const inventory = this.listInventory();
+    const payKpis = this.getPaymentKPIs();
+    const invKpis = this.getInvoiceKPIs();
     const now = new Date();
     const mtdStart = new Date(now.getFullYear(), now.getMonth(), 1);
 
     const openStatuses = ['Open', 'In Progress', 'Waiting Parts'];
     const openWOs = wos.filter((w) => openStatuses.includes(w.status));
 
-    const mtdPayments = payments.filter((p) => new Date(p.createdAt || p.date) >= mtdStart);
-    const revenueMTD = mtdPayments.reduce((s, p) => s + p.amount, 0);
-
-    const outstanding = invoices
-      .filter((inv) => !['Paid', 'Written Off'].includes(inv.status))
-      .reduce((s, inv) => s + (inv.total - (inv.amountPaid || 0)), 0);
-
-    const overdueCount = invoices.filter((inv) => inv.status === 'Overdue').length;
-    const lowStock = inventory.filter((p) => p.status !== 'In Stock');
-
+    // Completed MTD = currently Completed or Invoiced, dated by update/completion when available
     const completedMTD = wos.filter((w) => {
-      if (w.status !== 'Completed' && w.status !== 'Invoiced') return false;
-      return new Date(w.createdAt) >= mtdStart;
-    });
+      if (!['Completed', 'Invoiced'].includes(w.status)) return false;
+      const d = new Date(w.completedAt || w.updatedAt || w.createdAt || w.date);
+      return !isNaN(d) && d >= mtdStart;
+    }).length;
+
+    const invoicesSentMTD = invoices.filter((inv) => {
+      const d = new Date(inv.createdAt || inv.date);
+      return !isNaN(d) && d >= mtdStart;
+    }).length;
 
     return {
       openWOs: openWOs.length,
@@ -772,14 +1523,16 @@ ARS.Data = {
         'In Progress': wos.filter((w) => w.status === 'In Progress').length,
         'Waiting Parts': wos.filter((w) => w.status === 'Waiting Parts').length,
       },
-      revenueMTD,
-      outstanding,
-      overdueCount,
-      lowStockCount: lowStock.length,
-      outOfStockCount: lowStock.filter((p) => p.status === 'Out of Stock').length,
-      completedMTD: completedMTD.length,
-      invoicesSentMTD: invoices.filter((inv) => new Date(inv.createdAt) >= mtdStart).length,
-      paymentsMTD: revenueMTD,
+      revenueMTD: payKpis.receivedMTD,
+      outstanding: invKpis.awaiting + invKpis.overdueTotal,
+      overdueCount: invKpis.overdueCount,
+      lowStockCount: inventory.filter((p) => p.status !== 'In Stock').length,
+      outOfStockCount: inventory.filter((p) => p.status === 'Out of Stock').length,
+      completedMTD,
+      invoicesSentMTD,
+      paymentsMTD: payKpis.receivedMTD,
+      refundedMTD: payKpis.refundedMTD,
+      successfulChargeCount: payKpis.successfulChargeCount,
     };
   },
 
@@ -792,6 +1545,7 @@ ARS.Data = {
         icon: 'fa-exclamation-circle',
         title: `${invoices.length} Overdue Invoice${invoices.length > 1 ? 's' : ''}`,
         desc: invoices.map((i) => `${i.id} · ${i.customerName} (${ARS.fmtMoney(i.total - (i.amountPaid || 0))})`).join(' & '),
+        href: '/app/invoices.html?status=Overdue',
       });
     }
     const oos = this.listInventory().filter((p) => p.status === 'Out of Stock');
@@ -801,6 +1555,7 @@ ARS.Data = {
         icon: 'fa-boxes',
         title: `${p.desc} Out of Stock`,
         desc: `${p.id} · ${p.partNo} — reorder immediately`,
+        href: `/app/inventory.html?status=Out%20of%20Stock&highlight=${encodeURIComponent(p.id)}`,
       });
     });
     const low = this.listInventory().filter((p) => p.status === 'Low');
@@ -810,6 +1565,7 @@ ARS.Data = {
         icon: 'fa-tools',
         title: `${low.length} Parts at Low Inventory`,
         desc: low.map((p) => p.desc).slice(0, 3).join(', ') + (low.length > 3 ? '…' : ''),
+        href: '/app/inventory.html?status=attention',
       });
     }
     const pmDue = this.trucksPMDue(30);
@@ -819,6 +1575,7 @@ ARS.Data = {
         icon: 'fa-truck',
         title: `${pmDue.length} Truck${pmDue.length > 1 ? 's' : ''} PM Due`,
         desc: pmDue.map((t) => `Unit ${t.unit} · ${t.make} ${t.model}`).join(' & '),
+        href: '/app/trucks.html?status=PM%20Due',
       });
     }
     const pendingEst = ARS.Store.getCollection('estimates').filter((e) => ['Pending', 'Sent'].includes(e.status));
@@ -828,6 +1585,7 @@ ARS.Data = {
         icon: 'fa-file-alt',
         title: `${pendingEst.length} Estimates Awaiting Response`,
         desc: pendingEst.map((e) => `${e.id} · ${e.customerName}`).join(' & '),
+        href: '/app/estimates.html?status=awaiting',
       });
     }
     return alerts;
@@ -845,7 +1603,7 @@ ARS.Data = {
           const pd = new Date(p.createdAt || p.date);
           return pd.getMonth() === d.getMonth() && pd.getFullYear() === d.getFullYear();
         })
-        .reduce((s, p) => s + p.amount, 0);
+        .reduce((s, p) => s + this.paymentNetAmount(p), 0);
       result.push({ label, total });
     }
     return result;
@@ -857,48 +1615,120 @@ ARS.Data = {
     if (start && end) {
       wos = wos.filter((w) => this._inDateRange(w.createdAt || w.date, start, end));
     }
-    const techs = [...new Set(wos.map((w) => w.tech).filter(Boolean))];
-    return techs
-      .map((tech) => {
-        const jobs = wos.filter((w) => w.tech === tech);
-        const completed = jobs.filter((w) => ['Completed', 'Invoiced'].includes(w.status));
-        const revenue = completed.reduce((s, w) => s + (w.total || 0), 0);
-        return { tech, jobs: jobs.length, completed: completed.length, revenue };
-      })
-      .sort((a, b) => b.revenue - a.revenue);
+    const byTech = new Map();
+    wos.forEach((w) => {
+      const assigned = this.getWoTechs(w);
+      if (!assigned.length) return;
+      const share = assigned.length;
+      assigned.forEach((t) => {
+        const key = t.name;
+        if (!byTech.has(key)) byTech.set(key, { tech: key, jobs: 0, completed: 0, revenue: 0 });
+        const row = byTech.get(key);
+        row.jobs += 1;
+        if (['Completed', 'Invoiced'].includes(w.status)) {
+          row.completed += 1;
+          row.revenue += (w.total || 0) / share;
+        }
+      });
+    });
+    return [...byTech.values()].sort((a, b) => b.revenue - a.revenue);
   },
 
   _inDateRange(d, start, end) {
     const dt = new Date(d);
-    return !isNaN(dt) && dt >= start && dt <= end;
+    if (isNaN(dt)) return false;
+    return dt >= start && dt <= end;
   },
 
-  getReportRangeDates(range) {
+  _startOfDay(d) {
+    const x = new Date(d);
+    x.setHours(0, 0, 0, 0);
+    return x;
+  },
+
+  _endOfDay(d) {
+    const x = new Date(d);
+    x.setHours(23, 59, 59, 999);
+    return x;
+  },
+
+  getReportRangeDates(range = 'quarter', customStart = null, customEnd = null) {
     const now = new Date();
+    const endNow = this._endOfDay(now);
+
+    if (range === 'custom' && customStart && customEnd) {
+      const start = this._startOfDay(customStart);
+      const end = this._endOfDay(customEnd);
+      const label = `${ARS.fmtDate(start)} – ${ARS.fmtDate(end)}`;
+      return { start, end, label };
+    }
+
+    if (range === '7') {
+      return { start: new Date(now.getTime() - 7 * 86400000), end: endNow, label: 'Last 7 Days' };
+    }
     if (range === '30') {
+      return { start: new Date(now.getTime() - 30 * 86400000), end: endNow, label: 'Last 30 Days' };
+    }
+    if (range === '90') {
+      return { start: new Date(now.getTime() - 90 * 86400000), end: endNow, label: 'Last 90 Days' };
+    }
+    if (range === 'mtd') {
       return {
-        start: new Date(now.getTime() - 30 * 86400000),
-        end: now,
-        label: 'Last 30 Days',
+        start: new Date(now.getFullYear(), now.getMonth(), 1),
+        end: endNow,
+        label: now.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }) + ' (MTD)',
       };
+    }
+    if (range === 'last_month') {
+      const start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const end = this._endOfDay(new Date(now.getFullYear(), now.getMonth(), 0));
+      return {
+        start,
+        end,
+        label: start.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }),
+      };
+    }
+    if (range === 'last_quarter') {
+      const q = Math.floor(now.getMonth() / 3);
+      const prevQ = q === 0 ? 3 : q - 1;
+      const year = q === 0 ? now.getFullYear() - 1 : now.getFullYear();
+      const start = new Date(year, prevQ * 3, 1);
+      const end = this._endOfDay(new Date(year, prevQ * 3 + 3, 0));
+      return { start, end, label: `Q${prevQ + 1} ${year}` };
     }
     if (range === 'ytd') {
       return {
         start: new Date(now.getFullYear(), 0, 1),
-        end: now,
+        end: endNow,
         label: `Year to Date ${now.getFullYear()}`,
       };
     }
+    if (range === 'last_year') {
+      const y = now.getFullYear() - 1;
+      return {
+        start: new Date(y, 0, 1),
+        end: this._endOfDay(new Date(y, 11, 31)),
+        label: String(y),
+      };
+    }
+    if (range === 'all') {
+      return {
+        start: new Date(2000, 0, 1),
+        end: endNow,
+        label: 'All Time',
+      };
+    }
+    // default: current quarter
     const q = Math.floor(now.getMonth() / 3);
     return {
       start: new Date(now.getFullYear(), q * 3, 1),
-      end: now,
+      end: endNow,
       label: `Q${q + 1} ${now.getFullYear()}`,
     };
   },
 
-  getReportData(range = 'quarter') {
-    const { start, end, label } = this.getReportRangeDates(range);
+  getReportData(range = 'quarter', opts = {}) {
+    const { start, end, label } = this.getReportRangeDates(range, opts.start, opts.end);
     const payments = ARS.Store.getCollection('payments').filter((p) => this._inDateRange(p.createdAt || p.date, start, end));
     const wos = ARS.Store.getCollection('workOrders').filter((w) => this._inDateRange(w.createdAt || w.date, start, end));
     const completed = wos.filter((w) => ['Completed', 'Invoiced'].includes(w.status));
@@ -908,15 +1738,22 @@ ARS.Data = {
     payments.forEach((p) => {
       const d = new Date(p.createdAt || p.date);
       const key = `${d.getFullYear()}-${d.getMonth()}`;
-      const monthLabel = d.toLocaleDateString('en-US', { month: 'short', year: range === '30' ? undefined : 'numeric' });
+      const monthLabel = d.toLocaleDateString('en-US', {
+        month: 'short',
+        year: ['7', '30'].includes(range) ? undefined : 'numeric',
+      });
       if (!monthMap[key]) monthMap[key] = { label: monthLabel, total: 0, key };
-      monthMap[key].total += p.amount;
+      monthMap[key].total += this.paymentNetAmount(p);
     });
     const revenue = Object.values(monthMap).sort((a, b) => a.key.localeCompare(b.key));
 
-    const totalRevenue = payments.reduce((s, p) => s + p.amount, 0);
-    const invoicedTotal = invoices.reduce((s, inv) => s + inv.total, 0);
-    const collectionRate = invoicedTotal ? Math.round((totalRevenue / invoicedTotal) * 100) : (payments.length ? 100 : 0);
+    const totalRevenue = payments.reduce((s, p) => s + this.paymentNetAmount(p), 0);
+    const openInvoices = invoices.filter((inv) => inv.status !== 'Written Off');
+    const invoicedTotal = openInvoices.reduce((s, inv) => s + (Number(inv.total) || 0), 0);
+    const collectedOnInvoices = openInvoices.reduce((s, inv) => s + (Number(inv.amountPaid) || 0), 0);
+    const collectionRate = invoicedTotal
+      ? Math.min(100, Math.round((collectedOnInvoices / invoicedTotal) * 100))
+      : (payments.length ? 100 : 0);
     const avgLabor = completed.length ? completed.reduce((s, w) => s + (w.labor || 0), 0) / completed.length : 0;
     const avgParts = completed.length ? completed.reduce((s, w) => s + (w.parts || 0), 0) / completed.length : 0;
 
@@ -933,7 +1770,7 @@ ARS.Data = {
     const customerMap = {};
     payments.forEach((p) => {
       const name = p.customerName || 'Unknown';
-      customerMap[name] = (customerMap[name] || 0) + p.amount;
+      customerMap[name] = (customerMap[name] || 0) + this.paymentNetAmount(p);
     });
     const topCustomers = Object.entries(customerMap)
       .map(([name, total]) => ({ name, total }))
@@ -955,15 +1792,45 @@ ARS.Data = {
     });
     const woSummary = Object.values(woMonthMap).sort((a, b) => a.key.localeCompare(b.key));
     const woTotals = woSummary.reduce(
-      (acc, row) => ({
-        jobs: acc.jobs + row.jobs,
-        labor: acc.labor + row.labor,
-        parts: acc.parts + row.parts,
-        total: acc.total + row.total,
-      }),
-      { jobs: 0, labor: 0, parts: 0, total: 0 },
+      (acc, row) => {
+        acc.jobs += row.jobs;
+        acc.labor += row.labor;
+        acc.parts += row.parts;
+        acc.total += row.total;
+        return acc;
+      },
+      { jobs: 0, labor: 0, parts: 0, total: 0 }
     );
 
+    const tech = this.getTechPerformance({ start, end });
+    const aging = this.getARAging();
+    const outstanding = this.getInvoiceKPIs().outstanding;
+
+    return {
+      range,
+      rangeLabel: label,
+      start: start.toISOString(),
+      end: end.toISOString(),
+      revenue,
+      totalRevenue,
+      completedJobs: completed.length,
+      avgJob: completed.length ? completed.reduce((s, w) => s + (w.total || 0), 0) / completed.length : 0,
+      avgLabor,
+      avgParts,
+      collectionRate,
+      collectedOnInvoices,
+      invoicedTotal,
+      outstanding,
+      serviceCategories,
+      topCustomers,
+      tech,
+      aging,
+      woSummary,
+      woTotals,
+    };
+  },
+
+  getARAging() {
     const now = Date.now();
     const aging = {
       current: { label: 'Current (not overdue)', total: 0, items: [] },
@@ -987,25 +1854,7 @@ ARS.Data = {
     Object.values(aging).forEach((bucket) => {
       bucket.total = bucket.items.reduce((s, i) => s + i.balance, 0);
     });
-    const outstanding = Object.values(aging).reduce((s, b) => s + b.total, 0);
-
-    return {
-      rangeLabel: label,
-      revenue,
-      totalRevenue,
-      completedJobs: completed.length,
-      collectionRate,
-      avgLabor,
-      avgParts,
-      avgJob: completed.length ? totalRevenue / completed.length : 0,
-      outstanding,
-      serviceCategories,
-      topCustomers,
-      tech: this.getTechPerformance({ start, end }),
-      woSummary,
-      woTotals,
-      aging,
-    };
+    return aging;
   },
 
   globalSearch(q) {
@@ -1013,18 +1862,111 @@ ARS.Data = {
     const ql = q.toLowerCase();
     const results = [];
     ARS.Store.getCollection('customers').forEach((c) => {
-      if (c.name.toLowerCase().includes(ql) || (c.company || '').toLowerCase().includes(ql)) {
-        results.push({ type: 'Customer', label: c.name, sub: c.company, href: `/app/customer-detail.html?id=${c.id}` });
+      if (
+        (c.name || '').toLowerCase().includes(ql) ||
+        (c.company || '').toLowerCase().includes(ql) ||
+        (c.email || '').toLowerCase().includes(ql) ||
+        (c.phone || '').includes(ql) ||
+        String(c.id || '').toLowerCase().includes(ql)
+      ) {
+        results.push({
+          type: 'Customer',
+          label: c.name,
+          sub: c.company || c.email || c.phone || '',
+          href: `/app/customer-detail.html?id=${c.id}`,
+        });
+      }
+    });
+    ARS.Store.getCollection('trucks').forEach((t) => {
+      const owner = ARS.Store.getCollection('customers').find((c) => c.id === t.customerId);
+      const ownerLabel = owner ? (owner.company !== '—' ? owner.company : owner.name) : t.owner || '';
+      if (
+        t.id.toLowerCase().includes(ql) ||
+        String(t.unit).toLowerCase().includes(ql) ||
+        (t.make || '').toLowerCase().includes(ql) ||
+        (t.model || '').toLowerCase().includes(ql) ||
+        (t.vin || '').toLowerCase().includes(ql) ||
+        (t.plate || '').toLowerCase().includes(ql) ||
+        ownerLabel.toLowerCase().includes(ql)
+      ) {
+        results.push({
+          type: 'Truck',
+          label: `Unit ${t.unit} · ${t.make} ${t.model}`,
+          sub: ownerLabel || t.vin || '',
+          href: `/app/truck-detail.html?id=${t.id}`,
+        });
       }
     });
     ARS.Store.getCollection('workOrders').forEach((w) => {
-      if (w.id.toLowerCase().includes(ql) || (w.customerName || '').toLowerCase().includes(ql)) {
+      if (
+        w.id.toLowerCase().includes(ql) ||
+        (w.customerName || '').toLowerCase().includes(ql) ||
+        (w.truckLabel || '').toLowerCase().includes(ql) ||
+        (w.desc || '').toLowerCase().includes(ql) ||
+        (w.serviceType || '').toLowerCase().includes(ql)
+      ) {
         results.push({ type: 'Work Order', label: w.id, sub: w.customerName, href: `/app/work-order-detail.html?id=${w.id}` });
       }
     });
+    ARS.Store.getCollection('estimates').forEach((e) => {
+      if (
+        e.id.toLowerCase().includes(ql) ||
+        (e.customerName || '').toLowerCase().includes(ql) ||
+        (e.desc || '').toLowerCase().includes(ql)
+      ) {
+        results.push({ type: 'Estimate', label: e.id, sub: e.customerName, href: `/app/estimate-detail.html?id=${e.id}` });
+      }
+    });
     ARS.Store.getCollection('invoices').forEach((inv) => {
-      if (inv.id.toLowerCase().includes(ql) || (inv.customerName || '').toLowerCase().includes(ql)) {
+      if (
+        inv.id.toLowerCase().includes(ql) ||
+        (inv.customerName || '').toLowerCase().includes(ql)
+      ) {
         results.push({ type: 'Invoice', label: inv.id, sub: inv.customerName, href: `/app/invoice-detail.html?id=${inv.id}` });
+      }
+    });
+    this.listPayments().forEach((p) => {
+      if (
+        p.id.toLowerCase().includes(ql) ||
+        (p.invoiceId || '').toLowerCase().includes(ql) ||
+        (p.customerName || '').toLowerCase().includes(ql)
+      ) {
+        results.push({
+          type: 'Payment',
+          label: p.id,
+          sub: `${p.customerName} · ${p.invoiceId}`,
+          href: `/app/payments.html?q=${encodeURIComponent(p.id)}`,
+        });
+      }
+    });
+    this.listInventory().forEach((p) => {
+      if (
+        p.id.toLowerCase().includes(ql) ||
+        (p.partNo || '').toLowerCase().includes(ql) ||
+        (p.desc || '').toLowerCase().includes(ql)
+      ) {
+        results.push({
+          type: 'Inventory',
+          label: p.desc,
+          sub: `${p.partNo} · ${p.id}`,
+          href: `/app/inventory.html?highlight=${encodeURIComponent(p.id)}`,
+        });
+      }
+    });
+    this.listContactSubmissions().forEach((l) => {
+      const name = l.name || l.company || 'Lead';
+      if (
+        (l.name || '').toLowerCase().includes(ql) ||
+        (l.company || '').toLowerCase().includes(ql) ||
+        (l.email || '').toLowerCase().includes(ql) ||
+        (l.phone || '').includes(ql)
+      ) {
+        results.push({
+          type: 'Lead',
+          label: name,
+          sub: l.email || l.phone || l.status || 'New',
+          href: `/app/leads.html?highlight=${encodeURIComponent(l.id)}`,
+        });
       }
     });
     return results.slice(0, 12);
@@ -1034,9 +1976,68 @@ ARS.Data = {
     return ARS.SERVICE_TYPES || [];
   },
 
+  _isAssignableTech(e) {
+    if (!e) return false;
+    if (e.role !== 'technician') return false;
+    if (e.active === false) return false;
+    const status = e.status || 'Active';
+    if (status === 'Archived' || status === 'Terminated') return false;
+    const name = String(e.name || '').trim();
+    return !!name && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(name);
+  },
+
+  /** Live tech list from synced employees (preferred source of truth) */
+  refreshTechsFromEmployees() {
+    const live = this.listEmployees()
+      .filter((e) => this._isAssignableTech(e))
+      .map((e) => ({ uid: e.uid, name: e.name.trim() }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+    if (!live.length) return this._techs || [];
+    const prev = JSON.stringify(this._techs || []);
+    const next = JSON.stringify(live);
+    this._techs = live;
+    if (prev !== next) {
+      document.dispatchEvent(new CustomEvent('ars:techs-changed'));
+    }
+    return live;
+  },
+
+  async refreshTechs() {
+    if (ARS.isDemoMode?.()) {
+      return this._techs || [];
+    }
+    const fromEmployees = this.refreshTechsFromEmployees();
+    if (ARS.FirestoreSync?.listTechs) {
+      try {
+        const remote = await ARS.FirestoreSync.listTechs();
+        const byKey = new Map();
+        [...(remote || []), ...fromEmployees].forEach((t) => {
+          const name = String(t?.name || '').trim();
+          if (!name || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(name)) return;
+          byKey.set(t.uid || name, { uid: t.uid || '', name });
+        });
+        const merged = [...byKey.values()].sort((a, b) => a.name.localeCompare(b.name));
+        const prev = JSON.stringify(this._techs || []);
+        this._techs = merged;
+        if (prev !== JSON.stringify(merged)) {
+          document.dispatchEvent(new CustomEvent('ars:techs-changed'));
+        }
+      } catch (_) { /* keep employee-derived list */ }
+    }
+    return this._techs || [];
+  },
+
   getTechs() {
+    const live = this.listEmployees()
+      .filter((e) => this._isAssignableTech(e))
+      .map((e) => ({ uid: e.uid, name: e.name.trim() }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+    if (live.length) {
+      this._techs = live;
+      return live;
+    }
     if (this._techs?.length) return this._techs;
     const fromWos = [...new Set(ARS.Store.getCollection('workOrders').map((w) => w.tech).filter(Boolean))];
-    return fromWos;
+    return fromWos.map((name) => ({ uid: '', name }));
   },
 };

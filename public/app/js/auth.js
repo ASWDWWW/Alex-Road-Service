@@ -10,6 +10,7 @@ function demoUser() {
     email: ARS.Demo?.EMAIL || 'demo@alexroadservice.com',
     name: 'Demo User',
     role: 'demo',
+    photoURL: '',
   };
 }
 
@@ -95,9 +96,26 @@ ARS.Auth = {
       email: firebaseUser.email,
       name: profile?.name || firebaseUser.displayName || firebaseUser.email,
       role,
+      photoURL: profile?.photoURL || '',
+      phone: profile?.phone || '',
+      jobTitle: profile?.jobTitle || '',
+      hireDate: profile?.hireDate || '',
+      department: profile?.department || '',
+      status: profile?.status || 'Active',
+      employmentType: profile?.employmentType || '',
+      schedule: profile?.schedule || null,
+      emergencyContact: profile?.emergencyContact || { name: '', phone: '' },
+      address: profile?.address || '',
+      certifications: profile?.certifications || [],
     };
     this._writeSessionCache(this._user);
     return this._user;
+  },
+
+  async setPhotoURL(url) {
+    if (!this._user) return;
+    this._user = { ...this._user, photoURL: url || '' };
+    this._writeSessionCache(this._user);
   },
 
   _writeSessionCache(user) {

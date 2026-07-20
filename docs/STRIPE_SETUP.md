@@ -55,7 +55,7 @@ firebase deploy --only functions,firestore:rules,hosting
 
 1. Log in to the ops platform as office/admin
 2. Open an unpaid invoice → **Pay with Stripe**
-3. Use Stripe test card: `4242 4242 4242 4242`, any future expiry, any CVC
+3. Use Stripe test card: `4242 4242 4242 4242`, any future expiry, any CVC (see [`Development Docs/STRIPE_TEST_CARDS.md`](../Development%20Docs/STRIPE_TEST_CARDS.md))
 4. After redirect to `/app/payment-success.html`, confirm:
    - Payment appears in **Payments**
    - Invoice `amountPaid` and status update

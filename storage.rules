@@ -1,0 +1,129 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    function isAuth() {
+      return request.auth != null;
+    }
+    function role() {
+      return request.auth.token.role;
+    }
+    function isAdminOrDev() {
+      return isAuth() && role() in ['admin', 'developer'];
+    }
+    function isOffice() {
+      return isAuth() && role() in ['admin', 'office', 'developer'];
+    }
+    function isStaff() {
+      return isAuth() && role() in ['admin', 'office', 'technician', 'developer'];
+    }
+    function isImageOrVideo() {
+      return request.resource.contentType.matches('image/.*')
+        || request.resource.contentType.matches('video/.*');
+    }
+    function isImageVideoOrPdf() {
+      return isImageOrVideo() || request.resource.contentType == 'application/pdf';
+    }
+    function underImageLimit() {
+      return request.resource.size < 12 * 1024 * 1024;
+    }
+    function underVideoLimit() {
+      return request.resource.size < 60 * 1024 * 1024;
+    }
+    function underPdfLimit() {
+      return request.resource.size < 12 * 1024 * 1024;
+    }
+    function validSize() {
+      return (request.resource.contentType.matches('image/.*') && underImageLimit())
+        || (request.resource.contentType.matches('video/.*') && underVideoLimit())
+        || (request.resource.contentType == 'application/pdf' && underPdfLimit());
+    }
+
+    match /media/workOrders/{woId}/{fileName} {
+      allow read: if isStaff();
+      allow create: if isStaff() && isImageOrVideo() && validSize();
+      allow update: if isStaff() && isImageOrVideo() && validSize();
+      allow delete: if isStaff();
+    }
+
+    match /media/trucks/{truckId}/{fileName} {
+      allow read: if isStaff();
+      allow create: if isStaff() && isImageOrVideo() && validSize();
+      allow update: if isStaff() && isImageOrVideo() && validSize();
+      allow delete: if isStaff();
+    }
+
+    match /media/estimates/{estId}/{fileName} {
+      allow read: if isStaff();
+      allow create: if isOffice() && isImageOrVideo() && validSize();
+      allow update: if isOffice() && isImageOrVideo() && validSize();
+      allow delete: if isOffice();
+    }
+
+    match /media/leads/{leadId}/{fileName} {
+      allow read: if isOffice();
+      allow create: if isOffice() && isImageOrVideo() && validSize();
+      allow update: if isOffice() && isImageOrVideo() && validSize();
+      allow delete: if isOffice();
+    }
+
+    match /media/public_leads/{uploadId}/{fileName} {
+      allow read: if isOffice();
+      allow create: if isImageOrVideo() && validSize();
+      allow update, delete: if isOffice();
+    }
+
+    match /media/invoices/{invId}/{fileName} {
+      allow read: if isOffice();
+      allow create: if isOffice() && isImageVideoOrPdf() && validSize();
+      allow update: if isOffice() && isImageVideoOrPdf() && validSize();
+      allow delete: if isOffice();
+    }
+
+    match /media/inventory/{partId}/{fileName} {
+      allow read: if isStaff();
+      allow create: if isOffice() && request.resource.contentType.matches('image/.*') && underImageLimit();
+      allow update: if isOffice() && request.resource.contentType.matches('image/.*') && underImageLimit();
+      allow delete: if isOffice();
+    }
+
+    match /media/customers/{custId}/{fileName} {
+      allow read: if isOffice();
+      allow create: if isOffice() && request.resource.contentType.matches('image/.*') && underImageLimit();
+      allow update: if isOffice() && request.resource.contentType.matches('image/.*') && underImageLimit();
+      allow delete: if isOffice();
+    }
+
+    match /media/settings/logo/{fileName} {
+      allow read: if isAuth();
+      allow create, update: if isAdminOrDev()
+        && request.resource.contentType.matches('image/.*')
+        && underImageLimit();
+      allow delete: if isAdminOrDev();
+    }
+
+    match /media/users/{userId}/avatar/{fileName} {
+      allow read: if isAuth();
+      allow create, update: if isAuth()
+        && request.auth.uid == userId
+        && request.resource.contentType.matches('image/.*')
+        && underImageLimit();
+      allow delete: if isAuth() && request.auth.uid == userId;
+    }
+
+    match /media/users/{userId}/docs/{fileName} {
+      allow read: if isOffice() || (isAuth() && request.auth.uid == userId);
+      allow create: if (isAdminOrDev() || (isAuth() && request.auth.uid == userId))
+        && isImageVideoOrPdf() && validSize();
+      allow update: if (isAdminOrDev() || (isAuth() && request.auth.uid == userId))
+        && isImageVideoOrPdf() && validSize();
+      allow delete: if isAdminOrDev();
+    }
+
+    match /media/messages/{conversationId}/{fileName} {
+      allow read: if isStaff();
+      allow create: if isStaff() && isImageVideoOrPdf() && validSize();
+      allow update: if isStaff() && isImageVideoOrPdf() && validSize();
+      allow delete: if isStaff();
+    }
+  }
+}

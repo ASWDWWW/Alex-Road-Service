@@ -6,7 +6,7 @@
   <link rel="icon" href="/favicon.ico" sizes="any">
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <title>Payment Successful | Alex Road Service Ops</title>
-  <link rel="stylesheet" href="/app/css/app.css">
+  <link rel="stylesheet" href="/app/css/app.css?v=20260720w">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
 </head>
 <body class="app-body">
@@ -19,25 +19,35 @@
       <h1 style="font-family:var(--font-head);font-size:1.6rem;margin-bottom:8px">Payment Successful</h1>
       <p id="paySuccessMsg" style="color:var(--steel);font-size:.9rem;margin-bottom:24px">Your Stripe payment was received. The invoice will update shortly.</p>
       <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
-        <a href="/app/invoices.html" class="btn btn--primary">View Invoices</a>
+        <a href="/app/invoices.html" id="paySuccessInvoiceLink" class="btn btn--primary" style="display:none">View Invoice</a>
+        <a href="/app/invoices.html" class="btn btn--primary" id="paySuccessInvoicesBtn">View Invoices</a>
         <a href="/app/payments.html" class="btn btn--secondary">Payment History</a>
       </div>
     </div>
   </div>
 </main>
 <script src="/js/firebase-config.js"></script>
-<script src="/app/js/utils.js"></script>
-<script src="/app/js/demo-mode.js"></script>
-<script src="/app/js/data-store.js"></script>
-<script src="/app/js/auth.js"></script>
-<script src="/app/js/data-service.js"></script>
-<script src="/app/js/page-scripts.js"></script>
-<script src="/app/js/app-components.js"></script>
+<script src="/app/js/utils.js?v=20260720w"></script>
+<script src="/app/js/demo-mode.js?v=20260720w"></script>
+<script src="/app/js/data-store.js?v=20260720w"></script>
+<script src="/app/js/auth.js?v=20260720w"></script>
+<script src="/app/js/data-service.js?v=20260720w"></script>
+<script src="/app/js/page-scripts.js?v=20260720w"></script>
+<script src="/app/js/app-components.js?v=20260720w"></script>
 <script>
   ARS.Pages.waitReady(() => {
     const params = new URLSearchParams(location.search);
+    const invoiceId = params.get('invoiceId') || params.get('invoice_id') || '';
+    if (invoiceId) {
+      const detailHref = ARS.Pages.appHref(`/app/invoice-detail.html?id=${encodeURIComponent(invoiceId)}`);
+      const link = document.getElementById('paySuccessInvoiceLink');
+      link.href = detailHref;
+      link.style.display = '';
+      link.textContent = `View ${invoiceId}`;
+      document.getElementById('paySuccessInvoicesBtn').classList.remove('btn--primary');
+      document.getElementById('paySuccessInvoicesBtn').classList.add('btn--secondary');
+    }
     if (params.get('demo') === '1') {
-      const invoiceId = params.get('invoiceId') || '';
       const amount = params.get('amount');
       document.getElementById('paySuccessMsg').textContent =
         `Demo payment${amount ? ` of ${ARS.fmtMoney(amount)}` : ''}${invoiceId ? ` for ${invoiceId}` : ''} recorded. Invoice balance updated in demo mode.`;

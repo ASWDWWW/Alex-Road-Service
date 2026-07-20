@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <title>Estimate Detail | Alex Road Service Ops</title>
+  <link rel="stylesheet" href="/app/css/app.css?v=20260720w">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+</head>
+<body class="app-body">
+<div id="sidebar-placeholder"></div>
+<main class="app-main">
+  <div id="topbar-placeholder" data-title="Estimate"></div>
+  <div class="app-content" id="detailRoot"><div class="loading-state"><div class="loading-state__spinner"></div><div class="loading-state__text">Loading estimate…</div></div></div>
+</main>
+<script src="/app/js/utils.js?v=20260720w"></script>
+<script src="/app/js/demo-mode.js?v=20260720w"></script>
+<script src="/app/js/data-store.js?v=20260720w"></script>
+<script src="/app/js/auth.js?v=20260720w"></script>
+<script src="/app/js/data-service.js?v=20260720w"></script>
+<script src="/app/js/documents.js?v=20260720w"></script>
+<script src="/app/js/page-scripts.js?v=20260720w"></script>
+<script src="/app/js/app-components.js?v=20260720w"></script>
+<script>
+  function resolveTruck(est) {
+    if (est.truckId) return ARS.Data.getTruck(est.truckId);
+    if (!est.customerId || !est.truckLabel) return null;
+    const unitMatch = (est.truckLabel || '').match(/Unit\s+(\S+)/i);
+    const trucks = ARS.Data.listTrucks({ customerId: est.customerId });
+    if (unitMatch) return trucks.find((t) => String(t.unit) === unitMatch[1]) || null;
+    return trucks.find((t) => est.truckLabel.includes(t.make)) || null;
+  }
+
+  function render() {
+    const id = ARS.Pages.getParam('id');
+    const e = ARS.Data.getEstimate(id);
+    if (!e) {
+      document.getElementById('detailRoot').innerHTML = ARS.Pages.isDataReady()
+        ? '<div class="empty-state"><div class="empty-state__title">Estimate not found</div><a href="/app/estimates.html" class="btn btn--secondary" style="margin-top:12px">Back to estimates</a></div>'
+        : '<div class="loading-state"><div class="loading-state__spinner"></div><div class="loading-state__text">Loading estimate…</div></div>';
+      return;
+    }
+
+    const cust = e.customerId ? ARS.Data.getCustomer(e.customerId) : null;
+    const truck = resolveTruck(e);
+    const wo = e.workOrderId ? ARS.Data.getWorkOrder(e.workOrderId) : null;
+    const linkedInv = wo ? ARS.Data.listInvoices().find((inv) => inv.workOrderId === wo.id) : null;
+
+    const isPending = ['Pending', 'Sent'].includes(e.status);
+    const canApprove = isPending && ARS.can('estimates.send');
+    const canConvert = e.status === 'Approved' && ARS.can('workOrders.create');
+    const canInvoice = wo && wo.status === 'Completed' && !wo.invoiced && ARS.can('workOrders.invoice');
+
+    const custHref = e.customerId ? `/app/customer-detail.html?id=${e.customerId}` : '';
+    const truckHref = truck ? `/app/truck-detail.html?id=${truck.id}` : '';
+
+    document.getElementById('detailRoot').innerHTML = `
+      <div class="page-header">
+        <div>
+          <a href="${ARS.Pages.appHref('/app/estimates.html')}" style="font-size:.8rem;color:var(--steel)"><i class="fas fa-arrow-left"></i> Estimates</a>
+          <div class="page-header__title" style="margin-top:8px">${e.id}</div>
+          <div class="page-header__sub">${ARS.Pages.entityLink(e.customerName, custHref)} · ${ARS.Pages.entityLink(e.truckLabel || '—', truckHref)} · ${chip(e.status)}</div>
+        </div>
+        <div class="page-header__actions" style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn btn--secondary" id="printBtn"><i class="fas fa-print"></i> Print</button>
+          ${canApprove ? `<button class="btn btn--primary" id="approveBtn"><i class="fas fa-check"></i> Approve</button>` : ''}
+          ${canApprove ? `<button class="btn btn--ghost" id="declineBtn"><i class="fas fa-times"></i> Decline</button>` : ''}
+          ${canConvert ? `<button class="btn btn--primary" id="convertBtn"><i class="fas fa-clipboard-list"></i> Convert to WO</button>` : ''}
+          ${canInvoice ? `<button class="btn btn--primary" id="invoiceBtn"><i class="fas fa-file-invoice-dollar"></i> Generate Invoice</button>` : ''}
+          ${wo ? `<a href="${ARS.Pages.appHref(`/app/work-order-detail.html?id=${wo.id}`)}" class="btn btn--secondary"><i class="fas fa-wrench"></i> View WO</a>` : ''}
+          ${linkedInv ? `<a href="${ARS.Pages.appHref(`/app/invoice-detail.html?id=${linkedInv.id}`)}" class="btn btn--secondary"><i class="fas fa-file-invoice"></i> View Invoice</a>` : ''}
+        </div>
+      </div>
+      <div class="dash-grid">
+        <div class="app-card">
+          <div class="app-card__header"><div class="app-card__title">Estimate Details</div></div>
+          <div class="app-card__body" style="font-size:.88rem;display:grid;gap:10px">
+            <div><span style="color:var(--steel)">Date:</span> <strong>${e.date}</strong></div>
+            <div><span style="color:var(--steel)">Customer:</span> ${ARS.Pages.entityLink(e.customerName, custHref)}</div>
+            <div><span style="color:var(--steel)">Truck:</span> ${ARS.Pages.entityLink(e.truckLabel || '—', truckHref)}</div>
+            <div><span style="color:var(--steel)">Description:</span> ${e.desc || '—'}</div>
+            ${e.notes ? `<div><span style="color:var(--steel)">Notes:</span> ${e.notes}</div>` : ''}
+            ${wo ? `<div><span style="color:var(--steel)">Work Order:</span> <a href="${ARS.Pages.appHref(`/app/work-order-detail.html?id=${wo.id}`)}">${wo.id}</a> · ${chip(wo.status)}</div>` : ''}
+          </div>
+        </div>
+        <div class="app-card">
+          <div class="app-card__header"><div class="app-card__title">Line Items</div></div>
+          <div class="app-card__body" style="display:flex;flex-direction:column;gap:8px">
+            <div style="display:flex;justify-content:space-between"><span>Labor estimate</span><strong>${fmt$(e.labor)}</strong></div>
+            <div style="display:flex;justify-content:space-between"><span>Parts estimate</span><strong>${fmt$(e.parts)}</strong></div>
+            <div style="display:flex;justify-content:space-between;border-top:1px solid var(--border);padding-top:8px;font-size:1.05rem"><span>Total</span><strong>${fmt$(e.total)}</strong></div>
+          </div>
+        </div>
+      </div>
+      <div class="app-card" style="margin-top:16px"><div class="app-card__body" id="mediaMount"></div></div>`;
+
+    ARS.MediaUI.mount(document.getElementById('mediaMount'), {
+      entityType: 'estimates',
+      entityId: e.id,
+      title: 'Estimate photos & videos',
+      getEntity: () => ARS.Data.getEstimate(e.id),
+    });
+
+    document.getElementById('printBtn')?.addEventListener('click', () => ARS.Documents.printEstimate(id));
+
+    document.getElementById('approveBtn')?.addEventListener('click', async () => {
+      try {
+        await ARS.Data.updateEstimate(id, { status: 'Approved' });
+        showToast('Estimate approved', 'success');
+        render();
+      } catch (err) { showToast(err.message, 'error'); }
+    });
+
+    document.getElementById('declineBtn')?.addEventListener('click', async () => {
+      const ok = await ARS.Pages.confirmAsync({
+        title: 'Decline estimate',
+        message: `Decline ${e.id} for ${e.customerName}? This cannot be undone from the customer side.`,
+        okLabel: 'Decline',
+      });
+      if (!ok) return;
+      try {
+        await ARS.Data.updateEstimate(id, { status: 'Declined' });
+        showToast('Estimate declined', 'warning');
+        render();
+      } catch (err) { showToast(err.message, 'error'); }
+    });
+
+    document.getElementById('convertBtn')?.addEventListener('click', async () => {
+      try {
+        const newWo = await ARS.Data.convertEstimateToWO(id);
+        ARS.Pages.successWithView({
+          title: 'Work order created',
+          message: `Work order ${newWo.id} was created from ${e.id}.`,
+          href: `/app/work-order-detail.html?id=${newWo.id}`,
+          viewLabel: 'View work order',
+        });
+        render();
+      } catch (err) { showToast(err.message, 'error'); }
+    });
+
+    document.getElementById('invoiceBtn')?.addEventListener('click', async () => {
+      if (!wo) return;
+      try {
+        const inv = await ARS.Data.createInvoiceFromWO(wo.id);
+        ARS.Pages.successWithView({
+          title: 'Invoice created',
+          message: `Invoice ${inv.id} was generated for work order ${wo.id}.`,
+          href: `/app/invoice-detail.html?id=${inv.id}`,
+          viewLabel: 'View invoice',
+        });
+        render();
+      } catch (err) { showToast(err.message, 'error'); }
+    });
+  }
+
+  ARS.Pages.waitReady(() => {
+    render();
+    document.addEventListener('ars:data-changed', render);
+  });
+</script>
+</body>
+</html>
