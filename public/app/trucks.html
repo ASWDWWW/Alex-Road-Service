@@ -128,7 +128,7 @@
 <script src="/app/js/auth.js?v=20260720w"></script>
 <script src="/app/js/data-service.js?v=20260720w"></script>
 <script src="/app/js/page-scripts.js?v=20260720w"></script>
-<script src="/app/js/app-components.js?v=20260720w"></script>
+<script src="/app/js/app-components.js?v=20260721c"></script>
 <script>
   let activeFilter = 'all', searchVal = '', urlState = {};
 
@@ -159,18 +159,18 @@
     document.getElementById('truckCount').textContent = `${data.length} unit${data.length !== 1 ? 's' : ''}`;
     const pmDueStyle = (s) => s === 'PM Due' ? 'background:rgba(230,81,0,.06)' : '';
     document.getElementById('truckTable').innerHTML = data.length ? data.map(t => `
-      <tr data-row-id="${t.id}" style="${pmDueStyle(t.status)};cursor:pointer">
+      <tr data-row-id="${ARS.Pages.escapeHtml(t.id)}" style="${pmDueStyle(t.status)};cursor:pointer">
         <td class="td-bold" style="font-size:.9rem">${ARS.Pages.entityLink(`Unit ${t.unit}`, `/app/truck-detail.html?id=${t.id}`)}</td>
-        <td class="td-primary">${t.year} ${t.make} ${t.model}</td>
-        <td class="td-mono td-muted">${t.vin || '—'}</td>
+        <td class="td-primary">${ARS.Pages.escapeHtml(t.year)} ${ARS.Pages.escapeHtml(t.make)} ${ARS.Pages.escapeHtml(t.model)}</td>
+        <td class="td-mono td-muted">${ARS.Pages.escapeHtml(t.vin || '—')}</td>
         <td>${ARS.Pages.entityLink(t.owner, t.customerId ? `/app/customer-detail.html?id=${t.customerId}` : '')}</td>
-        <td style="font-weight:600">${t.mileage}</td>
-        <td class="td-muted">${t.lastPM}</td>
-        <td class="${t.status === 'PM Due' ? 'td-red' : 'td-muted'}">${t.nextPM}</td>
+        <td style="font-weight:600">${ARS.Pages.escapeHtml(t.mileage)}</td>
+        <td class="td-muted">${ARS.Pages.escapeHtml(t.lastPM)}</td>
+        <td class="${t.status === 'PM Due' ? 'td-red' : 'td-muted'}">${ARS.Pages.escapeHtml(t.nextPM)}</td>
         <td>${chip(t.status)}</td>
         <td class="td-actions">
-          <a class="btn btn--ghost btn--sm btn--icon" href="/app/truck-detail.html?id=${t.id}" title="View"><i class="fas fa-eye"></i></a>
-          <button class="btn btn--primary btn--sm" onclick="newWOForTruck('${t.id}','${t.customerId}')">New WO</button>
+          <a class="btn btn--ghost btn--sm btn--icon" href="/app/truck-detail.html?id=${encodeURIComponent(t.id)}" title="View"><i class="fas fa-eye"></i></a>
+          <button class="btn btn--primary btn--sm" data-new-wo-truck="${ARS.Pages.escapeHtml(t.id)}" data-customer-id="${ARS.Pages.escapeHtml(t.customerId)}">New WO</button>
         </td>
       </tr>
     `).join('') : ARS.Pages.tablePlaceholder(9, 'No trucks found', 'fa-truck');
@@ -201,6 +201,11 @@
     ARS.Pages.bindKpiFilter('kpiInShop', '/app/trucks.html?status=In Shop');
     ARS.Pages.bindKpiFilter('kpiPMDue', '/app/trucks.html?status=PM Due');
     document.getElementById('truckTable')?.addEventListener('click', (e) => {
+      const newWo = e.target.closest('[data-new-wo-truck]');
+      if (newWo) {
+        newWOForTruck(newWo.dataset.newWoTruck, newWo.dataset.customerId);
+        return;
+      }
       if (e.target.closest('a,button')) return;
       const tr = e.target.closest('tr[data-row-id]');
       if (tr) window.location.href = ARS.Pages.appHref(`/app/truck-detail.html?id=${tr.dataset.rowId}`);

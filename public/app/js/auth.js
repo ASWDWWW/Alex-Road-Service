@@ -129,6 +129,7 @@ ARS.Auth = {
   },
 
   _clearLocalSession() {
+    ARS.Store?.clearCurrentUserCache?.();
     this._user = null;
     sessionStorage.removeItem(SESSION_KEY);
     ARS.clearDemoSession?.();

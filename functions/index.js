@@ -1,6 +1,8 @@
 const { onCall, onRequest, HttpsError } = require('firebase-functions/v2/https');
 const { onSchedule } = require('firebase-functions/v2/scheduler');
 const { onDocumentWritten } = require('firebase-functions/v2/firestore');
+const logger = require('firebase-functions/logger');
+const { createHash, randomBytes } = require('crypto');
 const Stripe = require('stripe');
 const { initializeApp } = require('firebase-admin/app');
 const { getAuth } = require('firebase-admin/auth');
@@ -12,27 +14,45 @@ const auth = getAuth();
 
 const HOSTING_URL = 'https://launchpage-alex-roadservice.web.app';
 
-const STAFF_SEED = [
-  { email: 'admin@alexroadservice.com', password: 'password', name: 'Alex Rodriguez', role: 'admin' },
-  { email: 'office@alexroadservice.com', password: 'password', name: 'Sarah Torres', role: 'office' },
-  { email: 'tech@alexroadservice.com', password: 'password', name: 'Mike Santos', role: 'technician' },
-  { email: 'developer@alexroadservice.com', password: 'ChangeMe-Dev-2026!', name: 'Platform Developer', role: 'developer' },
-];
-
-function assertAdminOrDev(request) {
-  if (!request.auth) throw new HttpsError('unauthenticated', 'Login required');
-  const role = request.auth.token.role;
-  if (role !== 'admin' && role !== 'developer') {
-    throw new HttpsError('permission-denied', 'Admin or developer role required');
-  }
+function cleanText(value, maxLength) {
+  return String(value || '').trim().slice(0, maxLength);
 }
 
-function assertPaymentRole(request) {
+exports.healthCheck = onRequest({ region: 'us-central1', cors: false }, async (req, res) => {
+  if (req.method !== 'GET') {
+    res.status(405).send('Method not allowed');
+    return;
+  }
+  res.set('Cache-Control', 'no-store');
+  try {
+    await db.collection('settings').doc('shop').get();
+    res.status(200).json({ ok: true, service: 'alex-road-service', checkedAt: new Date().toISOString() });
+  } catch (error) {
+    logger.error('Health check failed', { error: error.message });
+    res.status(503).json({ ok: false, service: 'alex-road-service' });
+  }
+});
+
+async function assertActiveStaff(request, allowedRoles) {
   if (!request.auth) throw new HttpsError('unauthenticated', 'Login required');
   const role = request.auth.token.role;
-  if (!['admin', 'office', 'developer'].includes(role)) {
-    throw new HttpsError('permission-denied', 'Office or admin role required');
+  if (!allowedRoles.includes(role)) {
+    throw new HttpsError('permission-denied', 'Role is not authorized for this operation');
   }
+  const profile = await db.collection('users').doc(request.auth.uid).get();
+  const data = profile.data();
+  if (!profile.exists || data.active !== true || ['Archived', 'Terminated'].includes(data.status)) {
+    throw new HttpsError('permission-denied', 'Staff account is inactive');
+  }
+  return data;
+}
+
+async function assertAdminOrDev(request) {
+  return assertActiveStaff(request, ['admin', 'developer']);
+}
+
+async function assertPaymentRole(request) {
+  return assertActiveStaff(request, ['admin', 'office', 'developer']);
 }
 
 async function nextPaymentId() {
@@ -66,6 +86,7 @@ async function recordStripePayment({ invoiceId, amount, sessionId, paymentIntent
     const newPaid = (inv.amountPaid || 0) + amount;
     const balance = (inv.total || 0) - newPaid;
     const status = balance <= 0.01 ? 'Paid' : 'Partially Paid';
+    const creditBalance = Math.max(0, Math.round((newPaid - (inv.total || 0)) * 100) / 100);
 
     tx.set(paymentRef, {
       id: payId,
@@ -87,6 +108,8 @@ async function recordStripePayment({ invoiceId, amount, sessionId, paymentIntent
     tx.update(invRef, {
       amountPaid: newPaid,
       status,
+      creditBalance,
+      checkoutReservation: FieldValue.delete(),
       updatedAt: FieldValue.serverTimestamp(),
     });
 
@@ -439,6 +462,57 @@ exports.onWorkOrderWrite = onDocumentWritten({ document: 'workOrders/{woId}', re
   }
 });
 
+exports.onScheduleBlockWrite = onDocumentWritten(
+  { document: 'scheduleBlocks/{blockId}', region: 'us-central1' },
+  async (event) => {
+    const after = event.data?.after?.data();
+    const before = event.data?.before?.data();
+    if (!after || before) return;
+
+    const employeeIds = [...new Set(
+      (Array.isArray(after.employeeIds) ? after.employeeIds : []).filter(Boolean),
+    )];
+    if (!employeeIds.length) return;
+
+    const start = new Date(after.startAt);
+    const dateKey = Number.isNaN(start.getTime())
+      ? ''
+      : new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'America/New_York',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }).format(start);
+    const dateLabel = Number.isNaN(start.getTime())
+      ? 'your schedule'
+      : new Intl.DateTimeFormat('en-US', {
+        timeZone: 'America/New_York',
+        weekday: 'short',
+        month: 'short',
+        day: 'numeric',
+      }).format(start);
+
+    await Promise.all(employeeIds.map(async (uid) => {
+      const ref = db.collection('notifications').doc(`schedule_${event.params.blockId}_${uid}`);
+      try {
+        await ref.create({
+          userId: uid,
+          read: false,
+          type: 'info',
+          message: `New schedule block: ${after.title || 'Schedule update'} · ${dateLabel}`,
+          entityType: 'schedule',
+          entityId: event.params.blockId,
+          href: `/app/schedule.html?employeeId=${encodeURIComponent(uid)}&view=day${dateKey ? `&date=${dateKey}` : ''}`,
+          createdAt: FieldValue.serverTimestamp(),
+        });
+      } catch (error) {
+        // Firestore triggers are at-least-once; preserve an existing read receipt on retry.
+        if (error.code !== 6 && error.code !== 'already-exists') throw error;
+      }
+    }));
+  },
+);
+
 exports.onEstimateWrite = onDocumentWritten({ document: 'estimates/{estId}', region: 'us-central1' }, async (event) => {
   const after = event.data?.after?.data();
   const before = event.data?.before?.data();
@@ -458,10 +532,70 @@ exports.onEstimateWrite = onDocumentWritten({ document: 'estimates/{estId}', reg
   });
 });
 
+exports.submitContact = onCall({
+  region: 'us-central1',
+  cors: [
+    HOSTING_URL,
+    'https://alexroadservice.com',
+    'https://www.alexroadservice.com',
+  ],
+}, async (request) => {
+  const data = request.data || {};
+  const name = cleanText(data.name, 120);
+  const email = cleanText(data.email, 254).toLowerCase();
+  const message = cleanText(data.message, 4000);
+  if (!name || !email || !message || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    throw new HttpsError('invalid-argument', 'Name, a valid email, and message are required');
+  }
+
+  const rawIp = request.rawRequest?.ip
+    || request.rawRequest?.headers?.['x-forwarded-for']
+    || 'unknown';
+  const ipHash = createHash('sha256').update(String(rawIp).split(',')[0].trim()).digest('hex');
+  const limitRef = db.collection('rate_limits').doc(`contact_${ipHash}`);
+  const nowMs = Date.now();
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(limitRef);
+    const previous = snap.data() || {};
+    const activeWindow = nowMs - Number(previous.windowStartedAt || 0) < 10 * 60 * 1000;
+    const count = activeWindow ? Number(previous.count || 0) : 0;
+    if (count >= 5) throw new HttpsError('resource-exhausted', 'Too many requests. Please call the shop.');
+    tx.set(limitRef, {
+      windowStartedAt: activeWindow ? previous.windowStartedAt : nowMs,
+      count: count + 1,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+  });
+
+  const submission = {
+    name,
+    company: cleanText(data.company, 160),
+    email,
+    phone: cleanText(data.phone, 40),
+    service: cleanText(data.service, 100),
+    truck: cleanText(data.truck, 160),
+    location: cleanText(data.location, 300),
+    message,
+    source: 'website-contact-form',
+    media: [],
+    status: 'New',
+    version: 1,
+    createdAt: new Date().toISOString(),
+  };
+  const ref = await db.collection('contact_submissions').add(submission);
+  return { id: ref.id };
+});
+
 exports.nextSequentialId = onCall({ region: 'us-central1' }, async (request) => {
-  if (!request.auth) throw new HttpsError('unauthenticated', 'Login required');
+  await assertActiveStaff(request, ['admin', 'office', 'technician', 'developer']);
   const { prefix, year } = request.data;
   if (!prefix || !year) throw new HttpsError('invalid-argument', 'prefix and year required');
+  if (!['C', 'T', 'WO', 'EST', 'INV', 'P'].includes(prefix)) {
+    throw new HttpsError('invalid-argument', 'Unsupported record prefix');
+  }
+  if (Number(year) !== new Date().getFullYear()) {
+    throw new HttpsError('invalid-argument', 'Invalid record year');
+  }
   const counterRef = db.collection('counters').doc(`${prefix}_${year}`);
   const id = await db.runTransaction(async (tx) => {
     const snap = await tx.get(counterRef);
@@ -472,26 +606,417 @@ exports.nextSequentialId = onCall({ region: 'us-central1' }, async (request) => 
   return { id };
 });
 
+const CLIENT_ENTITY_COLLECTIONS = new Set([
+  'customers',
+  'trucks',
+  'workOrders',
+  'estimates',
+  'invoices',
+  'inventory',
+  'contact_submissions',
+]);
+
+function changedEntityKeys(before, after) {
+  return [...new Set([...Object.keys(before), ...Object.keys(after)])]
+    .filter((key) => JSON.stringify(before[key]) !== JSON.stringify(after[key]));
+}
+
+function validateEntityValue(value, depth = 0) {
+  if (depth > 6) return false;
+  if (value == null || typeof value === 'boolean') return true;
+  if (typeof value === 'number') return Number.isFinite(value);
+  if (typeof value === 'string') return value.length <= 10000;
+  if (Array.isArray(value)) {
+    return value.length <= 100 && value.every((entry) => validateEntityValue(entry, depth + 1));
+  }
+  if (typeof value === 'object') {
+    const keys = Object.keys(value);
+    return keys.length <= 100
+      && keys.every((key) => !key.startsWith('__') && validateEntityValue(value[key], depth + 1));
+  }
+  return false;
+}
+
+function validateEntityShape(collectionName, item) {
+  const required = {
+    customers: ['id', 'name', 'phone', 'status', 'version', 'createdAt'],
+    trucks: ['id', 'unit', 'year', 'make', 'model', 'customerId', 'status', 'version', 'createdAt'],
+    workOrders: [
+      'id', 'customerId', 'customerName', 'techIds', 'status', 'desc',
+      'labor', 'parts', 'tax', 'total', 'invoiced', 'media', 'version', 'createdAt',
+    ],
+    estimates: [
+      'id', 'customerName', 'desc', 'labor', 'parts', 'total', 'status', 'version', 'createdAt',
+    ],
+    invoices: [
+      'id', 'customerName', 'workOrderId', 'total', 'amountPaid', 'status', 'version', 'createdAt',
+    ],
+    inventory: [
+      'id', 'partNo', 'desc', 'qty', 'min', 'cost', 'price', 'status', 'version', 'createdAt',
+    ],
+    contact_submissions: ['id', 'name', 'email', 'message', 'status', 'version', 'createdAt'],
+  }[collectionName] || [];
+  if (!required.every((key) => Object.prototype.hasOwnProperty.call(item, key))) return false;
+  if (!Number.isInteger(Number(item.version)) || Number(item.version) < 1) return false;
+  return validateEntityValue(item);
+}
+
+exports.saveEntity = onCall({ region: 'us-central1' }, async (request) => {
+  await assertActiveStaff(request, ['admin', 'office', 'technician', 'developer']);
+  const { collectionName, item } = request.data || {};
+  if (!CLIENT_ENTITY_COLLECTIONS.has(collectionName) || !item || typeof item !== 'object') {
+    throw new HttpsError('invalid-argument', 'Unsupported entity payload');
+  }
+  const id = cleanText(item.id, 100);
+  if (!id || id !== item.id || JSON.stringify(item).length > 100000
+    || !validateEntityShape(collectionName, item)) {
+    throw new HttpsError('invalid-argument', 'Invalid entity ID or payload size');
+  }
+
+  const role = request.auth.token.role;
+  const isOfficeRole = ['admin', 'office', 'developer'].includes(role);
+  if (!isOfficeRole && collectionName !== 'workOrders') {
+    throw new HttpsError('permission-denied', 'Office role required');
+  }
+
+  const ref = db.collection(collectionName).doc(id);
+  return db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) {
+      if (!isOfficeRole || ['invoices', 'contact_submissions'].includes(collectionName)) {
+        throw new HttpsError('permission-denied', 'This entity must be created by a server workflow');
+      }
+      const created = {
+        ...item,
+        id,
+        version: 1,
+        createdAt: item.createdAt || new Date().toISOString(),
+      };
+      tx.create(ref, created);
+      return created;
+    }
+
+    const current = snap.data();
+    const expectedVersion = Number(item.version) - 1;
+    if (!Number.isInteger(expectedVersion)
+      || expectedVersion !== Number(current.version || 1)) {
+      throw new HttpsError('aborted', 'Record changed. Refresh and try again.');
+    }
+    if (item.createdAt !== current.createdAt || item.id !== current.id) {
+      throw new HttpsError('invalid-argument', 'Immutable entity fields cannot be changed');
+    }
+
+    const changed = changedEntityKeys(current, item)
+      .filter((key) => !['version', 'updatedAt'].includes(key));
+    if (collectionName === 'workOrders') {
+      if (role === 'technician') {
+        if (!(current.techIds || []).includes(request.auth.uid)
+          || ['Completed', 'Invoiced'].includes(current.status)
+          || !changed.every((key) => ['status', 'desc', 'notes', 'media'].includes(key))
+          || ['Completed', 'Invoiced'].includes(item.status)) {
+          throw new HttpsError('permission-denied', 'Technician update is not allowed');
+        }
+      } else if (['Completed', 'Invoiced'].includes(item.status)
+        && item.status !== current.status) {
+        throw new HttpsError('failed-precondition', 'Use the completion or invoicing workflow');
+      }
+    }
+    if (collectionName === 'inventory' && Number(item.qty) !== Number(current.qty)) {
+      throw new HttpsError('failed-precondition', 'Use the inventory adjustment workflow');
+    }
+    if (collectionName === 'invoices') {
+      const protectedKeys = [
+        'amountPaid', 'total', 'workOrderId', 'customerId', 'createdAt',
+        'creditBalance', 'checkoutReservation',
+      ];
+      if (changed.some((key) => protectedKeys.includes(key))) {
+        throw new HttpsError('permission-denied', 'Protected invoice fields cannot be changed');
+      }
+      if (item.status === 'Written Off' && !['admin', 'developer'].includes(role)) {
+        throw new HttpsError('permission-denied', 'Admin role required to write off an invoice');
+      }
+    }
+    if (collectionName === 'contact_submissions'
+      && !changed.every((key) => ['status', 'notes', 'assignedTo'].includes(key))) {
+      throw new HttpsError('permission-denied', 'Only lead workflow fields can be changed');
+    }
+
+    const saved = {
+      ...item,
+      version: Number(current.version || 1) + 1,
+      updatedAt: new Date().toISOString(),
+    };
+    tx.set(ref, saved);
+    return saved;
+  });
+});
+
+exports.saveShopSettings = onCall({ region: 'us-central1' }, async (request) => {
+  await assertAdminOrDev(request);
+  const patch = request.data?.patch;
+  if (!patch || typeof patch !== 'object') {
+    throw new HttpsError('invalid-argument', 'Settings patch required');
+  }
+  const allowed = new Set([
+    'shopName', 'shopAddress', 'shopPhone', 'shopEmail',
+    'laborRate', 'partsMarkup', 'taxRate', 'paymentTermsDays',
+    'shopLogoUrl', 'shopLogoPath',
+  ]);
+  if (!Object.keys(patch).every((key) => allowed.has(key))) {
+    throw new HttpsError('invalid-argument', 'Unsupported settings field');
+  }
+  const numericBounds = {
+    laborRate: [0, 1000],
+    partsMarkup: [0, 10],
+    taxRate: [0, 0.25],
+    paymentTermsDays: [0, 365],
+  };
+  for (const [key, [min, max]] of Object.entries(numericBounds)) {
+    if (patch[key] != null
+      && (!Number.isFinite(Number(patch[key])) || Number(patch[key]) < min || Number(patch[key]) > max)) {
+      throw new HttpsError('invalid-argument', `Invalid ${key}`);
+    }
+  }
+  for (const key of ['shopName', 'shopAddress', 'shopPhone', 'shopEmail', 'shopLogoUrl', 'shopLogoPath']) {
+    if (patch[key] != null && (typeof patch[key] !== 'string' || patch[key].length > 1000)) {
+      throw new HttpsError('invalid-argument', `Invalid ${key}`);
+    }
+  }
+  const saved = { ...patch, updatedAt: FieldValue.serverTimestamp(), updatedBy: request.auth.uid };
+  await db.collection('settings').doc('shop').set(saved, { merge: true });
+  await db.collection('audit_log').add({
+    action: 'settings.update',
+    entityType: 'settings',
+    entityId: 'shop',
+    userId: request.auth.uid,
+    at: FieldValue.serverTimestamp(),
+  });
+  return { ...patch };
+});
+
+exports.completeWorkOrder = onCall({ region: 'us-central1' }, async (request) => {
+  await assertActiveStaff(request, ['admin', 'office', 'technician', 'developer']);
+  const role = request.auth.token.role;
+  const { workOrderId, expectedVersion } = request.data || {};
+  if (!workOrderId) throw new HttpsError('invalid-argument', 'workOrderId required');
+
+  const woRef = db.collection('workOrders').doc(workOrderId);
+  const result = await db.runTransaction(async (tx) => {
+    const woSnap = await tx.get(woRef);
+    if (!woSnap.exists) throw new HttpsError('not-found', 'Work order not found');
+    const wo = woSnap.data();
+    if (role === 'technician' && !(wo.techIds || []).includes(request.auth.uid)) {
+      throw new HttpsError('permission-denied', 'Work order is not assigned to this technician');
+    }
+    if (wo.status === 'Completed' || wo.status === 'Invoiced') {
+      return { alreadyCompleted: true, workOrder: { id: woSnap.id, ...wo } };
+    }
+    if (expectedVersion != null && Number(wo.version || 1) !== Number(expectedVersion)) {
+      throw new HttpsError('aborted', 'Work order changed. Refresh and try again.');
+    }
+
+    const deductions = new Map();
+    (Array.isArray(wo.lineItems) ? wo.lineItems : []).forEach((line) => {
+      if (!line?.partId || !(Number(line.qty) > 0)) return;
+      deductions.set(line.partId, (deductions.get(line.partId) || 0) + Number(line.qty));
+    });
+    const inventoryRows = [];
+    for (const [partId, quantity] of deductions) {
+      const partRef = db.collection('inventory').doc(partId);
+      const partSnap = await tx.get(partRef);
+      if (!partSnap.exists) {
+        throw new HttpsError('failed-precondition', `Inventory part ${partId} was not found`);
+      }
+      inventoryRows.push({ partId, quantity, partRef, part: partSnap.data() });
+    }
+
+    const now = new Date().toISOString();
+    for (const { partId, quantity, partRef, part } of inventoryRows) {
+      const currentQty = Number(part.qty) || 0;
+      if (currentQty < quantity) {
+        throw new HttpsError('failed-precondition', `Insufficient stock for ${partId}`);
+      }
+      const nextQty = currentQty - quantity;
+      const min = Number(part.min) || 0;
+      const status = nextQty <= 0 ? 'Out of Stock' : nextQty <= min ? 'Low' : 'In Stock';
+      tx.update(partRef, {
+        qty: nextQty,
+        status,
+        version: Number(part.version || 1) + 1,
+        updatedAt: now,
+      });
+      const txId = `wo_${String(workOrderId).replace(/[^a-zA-Z0-9_-]/g, '_')}_${String(partId).replace(/[^a-zA-Z0-9_-]/g, '_')}`;
+      tx.set(db.collection('inventoryTransactions').doc(txId), {
+        id: txId,
+        partId,
+        delta: -quantity,
+        reason: `workOrder:${workOrderId}`,
+        workOrderId,
+        at: now,
+        createdBy: request.auth.uid,
+      });
+    }
+
+    const updated = {
+      status: 'Completed',
+      inventoryDeductedAt: now,
+      inventoryDeductedBy: request.auth.uid,
+      version: Number(wo.version || 1) + 1,
+      updatedAt: now,
+    };
+    tx.update(woRef, updated);
+    return { alreadyCompleted: false, workOrder: { id: woSnap.id, ...wo, ...updated } };
+  });
+
+  return result;
+});
+
+exports.adjustInventory = onCall({ region: 'us-central1' }, async (request) => {
+  await assertPaymentRole(request);
+  const { partId, delta, reason } = request.data || {};
+  const quantityDelta = Number(delta);
+  if (!partId || !Number.isFinite(quantityDelta) || quantityDelta === 0) {
+    throw new HttpsError('invalid-argument', 'partId and a non-zero numeric delta are required');
+  }
+  if (Math.abs(quantityDelta) > 100000) {
+    throw new HttpsError('invalid-argument', 'Inventory adjustment is too large');
+  }
+  const safeReason = String(reason || 'adjustment').trim().slice(0, 300);
+  const partRef = db.collection('inventory').doc(partId);
+  const transactionId = `adj_${Date.now()}_${randomBytes(8).toString('hex')}`;
+
+  return db.runTransaction(async (tx) => {
+    const partSnap = await tx.get(partRef);
+    if (!partSnap.exists) throw new HttpsError('not-found', 'Inventory part not found');
+    const part = partSnap.data();
+    const nextQty = (Number(part.qty) || 0) + quantityDelta;
+    if (nextQty < 0) throw new HttpsError('failed-precondition', 'Adjustment would make stock negative');
+    const min = Number(part.min) || 0;
+    const status = nextQty <= 0 ? 'Out of Stock' : nextQty <= min ? 'Low' : 'In Stock';
+    const now = new Date().toISOString();
+    const updated = {
+      qty: nextQty,
+      status,
+      version: Number(part.version || 1) + 1,
+      updatedAt: now,
+    };
+    tx.update(partRef, updated);
+    tx.create(db.collection('inventoryTransactions').doc(transactionId), {
+      id: transactionId,
+      partId,
+      delta: quantityDelta,
+      reason: safeReason,
+      at: now,
+      createdBy: request.auth.uid,
+    });
+    return { part: { id: partSnap.id, ...part, ...updated }, transactionId };
+  });
+});
+
+exports.createInvoiceFromWorkOrder = onCall({ region: 'us-central1' }, async (request) => {
+  await assertPaymentRole(request);
+  const { workOrderId } = request.data || {};
+  if (!workOrderId) throw new HttpsError('invalid-argument', 'workOrderId required');
+
+  const year = new Date().getFullYear();
+  const woRef = db.collection('workOrders').doc(workOrderId);
+  const settingsRef = db.collection('settings').doc('shop');
+  const counterRef = db.collection('counters').doc(`INV_${year}`);
+
+  return db.runTransaction(async (tx) => {
+    const [woSnap, settingsSnap, counterSnap] = await Promise.all([
+      tx.get(woRef),
+      tx.get(settingsRef),
+      tx.get(counterRef),
+    ]);
+    if (!woSnap.exists) throw new HttpsError('not-found', 'Work order not found');
+    const wo = woSnap.data();
+    if (wo.invoiced || wo.status === 'Invoiced') {
+      throw new HttpsError('already-exists', 'Work order has already been invoiced');
+    }
+    if (wo.status !== 'Completed') {
+      throw new HttpsError('failed-precondition', 'Work order must be completed before invoicing');
+    }
+
+    const next = Number(counterSnap.data()?.value || 0) + 1;
+    const invoiceId = `INV-${year}-${String(next).padStart(4, '0')}`;
+    const now = new Date();
+    const due = new Date(now);
+    due.setDate(due.getDate() + Number(settingsSnap.data()?.paymentTermsDays || 14));
+    const invoice = {
+      id: invoiceId,
+      date: now.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+      due: due.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+      customerName: wo.customerName || '',
+      customerId: wo.customerId || null,
+      workOrderId,
+      total: Number(wo.total) || 0,
+      amountPaid: 0,
+      status: 'Sent',
+      version: 1,
+      createdAt: now.toISOString(),
+      createdBy: request.auth.uid,
+    };
+
+    tx.set(counterRef, { value: next, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+    tx.create(db.collection('invoices').doc(invoiceId), invoice);
+    tx.update(woRef, {
+      invoiced: true,
+      invoiceId,
+      status: 'Invoiced',
+      version: Number(wo.version || 1) + 1,
+      updatedAt: now.toISOString(),
+    });
+    return invoice;
+  });
+});
+
 exports.markOverdueInvoices = onSchedule('every 24 hours', async () => {
   const now = new Date();
   const snap = await db.collection('invoices')
     .where('status', 'in', ['Sent', 'Partially Paid'])
     .get();
-  const batch = db.batch();
-  snap.docs.forEach((docSnap) => {
+  const overdue = snap.docs.filter((docSnap) => {
     const inv = docSnap.data();
     const due = inv.due?.toDate?.() || new Date(inv.due);
     const balance = (inv.total || 0) - (inv.amountPaid || 0);
-    if (due < now && balance > 0) {
-      batch.update(docSnap.ref, { status: 'Overdue', updatedAt: FieldValue.serverTimestamp() });
-    }
+    return due < now && balance > 0;
   });
-  await batch.commit();
+  for (let i = 0; i < overdue.length; i += 400) {
+    const batch = db.batch();
+    overdue.slice(i, i + 400).forEach((docSnap) => {
+      batch.update(docSnap.ref, { status: 'Overdue', updatedAt: FieldValue.serverTimestamp() });
+    });
+    await batch.commit();
+  }
+});
+
+exports.deleteExpiredContactSubmissions = onSchedule('every 24 hours', async () => {
+  const cutoff = new Date(Date.now() - 2 * 365 * 24 * 60 * 60 * 1000).toISOString();
+  let deleted = 0;
+  while (true) {
+    const snap = await db.collection('contact_submissions')
+      .where('createdAt', '<', cutoff)
+      .limit(400)
+      .get();
+    if (snap.empty) break;
+    const batch = db.batch();
+    snap.docs.forEach((docSnap) => batch.delete(docSnap.ref));
+    await batch.commit();
+    deleted += snap.size;
+    if (snap.size < 400) break;
+  }
+  logger.info('Expired contact submissions deleted', { deleted });
 });
 
 exports.auditLog = onCall({ region: 'us-central1' }, async (request) => {
-  if (!request.auth) throw new HttpsError('unauthenticated', 'Login required');
-  const { action, entityType, entityId, before, after } = request.data;
+  await assertActiveStaff(request, ['admin', 'office', 'technician', 'developer']);
+  const { action, entityType, entityId, before, after } = request.data || {};
+  if (typeof action !== 'string' || !/^[a-zA-Z][a-zA-Z0-9_.-]{1,79}$/.test(action)) {
+    throw new HttpsError('invalid-argument', 'Invalid audit action');
+  }
+  const serialized = JSON.stringify({ entityType, entityId, before, after });
+  if (serialized.length > 20000) throw new HttpsError('invalid-argument', 'Audit payload too large');
   await db.collection('audit_log').add({
     action,
     entityType: entityType || null,
@@ -499,81 +1024,34 @@ exports.auditLog = onCall({ region: 'us-central1' }, async (request) => {
     before: before || null,
     after: after || null,
     userId: request.auth.uid,
+    source: 'client_claim',
     at: FieldValue.serverTimestamp(),
   });
   return { ok: true };
 });
 
-const LEGACY_CUSTOMER_ID = /^C00[1-8]$/;
-const LEGACY_TRUCK_ID = /^T0(0[1-9]|10)$/;
-const LEGACY_NAMES = ['washex', 'james construction'];
-const PURGE_COLLECTIONS = [
-  'customers', 'trucks', 'workOrders', 'estimates', 'invoices',
-  'payments', 'inventory', 'inventoryTransactions',
-];
-
-function isLegacyDemoDoc(collection, id, data = {}) {
-  if (collection === 'customers' && LEGACY_CUSTOMER_ID.test(id)) return true;
-  if (collection === 'trucks' && LEGACY_TRUCK_ID.test(id)) return true;
-  const name = `${data.name || ''} ${data.customerName || ''} ${data.company || ''}`.toLowerCase();
-  return LEGACY_NAMES.some((n) => name.includes(n));
-}
-
-async function firestoreHasLegacyDemo() {
-  const snap = await db.collection('customers').limit(25).get();
-  return snap.docs.some((d) => isLegacyDemoDoc('customers', d.id, d.data()));
-}
-
-async function deleteAllInCollection(colName) {
-  const snap = await db.collection(colName).get();
-  if (snap.empty) return 0;
-  let deleted = 0;
-  for (let i = 0; i < snap.docs.length; i += 400) {
-    const batch = db.batch();
-    snap.docs.slice(i, i + 400).forEach((d) => batch.delete(d.ref));
-    await batch.commit();
-    deleted += Math.min(400, snap.docs.length - i);
-  }
-  return deleted;
-}
-
-/** Remove seeded demo records from Firestore (any staff role). */
-exports.purgeLegacyDemoData = onCall({
-  region: 'us-central1',
-  cors: [
-    'https://launchpage-alex-roadservice.web.app',
-    /^https:\/\/launchpage-alex-roadservice--.*\.web\.app$/,
-  ],
-}, async (request) => {
-  if (!request.auth) throw new HttpsError('unauthenticated', 'Login required');
-  const role = request.auth.token.role;
-  if (!['admin', 'office', 'developer'].includes(role)) {
-    throw new HttpsError('permission-denied', 'Staff login required');
-  }
-  const hasLegacy = await firestoreHasLegacyDemo();
-  if (!hasLegacy && !request.data?.force) {
-    return { purged: false, reason: 'no_legacy_detected' };
-  }
-  const counts = {};
-  for (const col of PURGE_COLLECTIONS) {
-    counts[col] = await deleteAllInCollection(col);
-  }
-  return { purged: true, counts, total: Object.values(counts).reduce((s, n) => s + n, 0) };
-});
-
 /** Set role custom claim + Firestore profile (admin/developer only) */
 exports.setUserRole = onCall({ region: 'us-central1' }, async (request) => {
-  assertAdminOrDev(request);
+  await assertAdminOrDev(request);
   const { uid, email, name, role } = request.data;
   if (!uid && !email) throw new HttpsError('invalid-argument', 'uid or email required');
   if (!role || !['admin', 'office', 'technician', 'developer'].includes(role)) {
     throw new HttpsError('invalid-argument', 'Invalid role');
+  }
+  if (role === 'developer' && request.auth.token.role !== 'developer') {
+    throw new HttpsError('permission-denied', 'Only a developer can grant the developer role');
   }
   let userRecord;
   if (uid) {
     userRecord = await auth.getUser(uid);
   } else {
     userRecord = await auth.getUserByEmail(email.toLowerCase());
+  }
+  if (request.auth.token.role !== 'developer') {
+    const target = await db.collection('users').doc(userRecord.uid).get();
+    if (target.data()?.role === 'developer') {
+      throw new HttpsError('permission-denied', 'Only a developer can modify a developer account');
+    }
   }
   await setRole(userRecord.uid, role);
   await upsertUserProfile(userRecord.uid, {
@@ -617,8 +1095,9 @@ function defaultSchedule() {
   };
 }
 
-/** Shared starter password for every new hire — they must change it via email link */
-const DEFAULT_HIRE_PASSWORD = process.env.DEFAULT_HIRE_PASSWORD || 'AlexRoadHire!';
+function generateTemporaryPassword() {
+  return `${randomBytes(32).toString('base64url')}Aa1!`;
+}
 
 /** Public Web API key (same as client firebase-config) — used to trigger Firebase Auth emails */
 const FIREBASE_WEB_API_KEY =
@@ -652,7 +1131,7 @@ async function sendFirebasePasswordResetEmail(email) {
 
 /** Create an employee: Auth user + custom claims + Firestore HR profile (admin/developer only) */
 exports.createEmployee = onCall({ region: 'us-central1' }, async (request) => {
-  assertAdminOrDev(request);
+  await assertAdminOrDev(request);
   const callerRole = request.auth.token.role;
   const { name, email, role, phone, jobTitle, hireDate, department } = request.data || {};
   if (!name || !email) throw new HttpsError('invalid-argument', 'name and email required');
@@ -662,12 +1141,12 @@ exports.createEmployee = onCall({ region: 'us-central1' }, async (request) => {
   }
 
   const em = String(email).trim().toLowerCase();
-  const defaultPassword = DEFAULT_HIRE_PASSWORD;
+  const temporaryPassword = generateTemporaryPassword();
   let userRecord;
   try {
     userRecord = await auth.createUser({
       email: em,
-      password: defaultPassword,
+      password: temporaryPassword,
       displayName: name,
       emailVerified: false,
     });
@@ -676,6 +1155,16 @@ exports.createEmployee = onCall({ region: 'us-central1' }, async (request) => {
       throw new HttpsError('already-exists', 'An account with this email already exists');
     }
     throw new HttpsError('internal', e.message || 'Could not create Auth user');
+  }
+
+  try {
+    await sendFirebasePasswordResetEmail(em);
+  } catch (e) {
+    await auth.deleteUser(userRecord.uid).catch(() => {});
+    throw new HttpsError(
+      'unavailable',
+      'The employee account was not created because the password setup email could not be sent. Try again.',
+    );
   }
 
   await setRole(userRecord.uid, role);
@@ -720,30 +1209,18 @@ exports.createEmployee = onCall({ region: 'us-central1' }, async (request) => {
   });
   await syncShopConversationParticipants().catch((e) => console.warn('shop sync:', e.message));
 
-  let passwordResetSent = false;
-  let passwordResetError = null;
-  try {
-    await sendFirebasePasswordResetEmail(em);
-    passwordResetSent = true;
-  } catch (e) {
-    passwordResetError = e.message || 'Failed to send password reset email';
-    console.warn('sendFirebasePasswordResetEmail failed:', passwordResetError);
-  }
-
   return {
     ok: true,
     uid: userRecord.uid,
     email: em,
-    defaultPassword,
     role,
-    passwordResetSent,
-    passwordResetError,
+    passwordResetSent: true,
   };
 });
 
 /** Resend Firebase password-reset email for an employee */
 exports.sendEmployeePasswordReset = onCall({ region: 'us-central1' }, async (request) => {
-  assertAdminOrDev(request);
+  await assertAdminOrDev(request);
   const { uid, email } = request.data || {};
   let em = email ? String(email).trim().toLowerCase() : '';
   if (uid) {
@@ -769,7 +1246,7 @@ exports.sendEmployeePasswordReset = onCall({ region: 'us-central1' }, async (req
 
 /** Archive employee: disable login, keep HR record */
 exports.archiveEmployee = onCall({ region: 'us-central1' }, async (request) => {
-  assertAdminOrDev(request);
+  await assertAdminOrDev(request);
   const { uid } = request.data || {};
   if (!uid) throw new HttpsError('invalid-argument', 'uid required');
   if (uid === request.auth.uid) {
@@ -782,6 +1259,7 @@ exports.archiveEmployee = onCall({ region: 'us-central1' }, async (request) => {
 
   try {
     await auth.updateUser(uid, { disabled: true });
+    await auth.revokeRefreshTokens(uid);
   } catch (e) {
     if (e.code !== 'auth/user-not-found') {
       throw new HttpsError('internal', e.message || 'Could not disable Auth user');
@@ -813,7 +1291,7 @@ exports.archiveEmployee = onCall({ region: 'us-central1' }, async (request) => {
 
 /** Restore archived employee */
 exports.unarchiveEmployee = onCall({ region: 'us-central1' }, async (request) => {
-  assertAdminOrDev(request);
+  await assertAdminOrDev(request);
   const { uid } = request.data || {};
   if (!uid) throw new HttpsError('invalid-argument', 'uid required');
 
@@ -823,6 +1301,7 @@ exports.unarchiveEmployee = onCall({ region: 'us-central1' }, async (request) =>
 
   try {
     await auth.updateUser(uid, { disabled: false });
+    await setRole(uid, snap.data().role);
   } catch (e) {
     if (e.code !== 'auth/user-not-found') {
       throw new HttpsError('internal', e.message || 'Could not enable Auth user');
@@ -854,7 +1333,7 @@ exports.unarchiveEmployee = onCall({ region: 'us-central1' }, async (request) =>
 
 /** Permanently delete employee Auth account + HR profile */
 exports.deleteEmployee = onCall({ region: 'us-central1' }, async (request) => {
-  assertAdminOrDev(request);
+  await assertAdminOrDev(request);
   const { uid } = request.data || {};
   if (!uid) throw new HttpsError('invalid-argument', 'uid required');
   if (uid === request.auth.uid) {
@@ -892,7 +1371,7 @@ exports.deleteEmployee = onCall({ region: 'us-central1' }, async (request) => {
 
 /** Update an employee profile: admin/developer (any field) or self (limited fields) */
 exports.updateEmployee = onCall({ region: 'us-central1' }, async (request) => {
-  if (!request.auth) throw new HttpsError('unauthenticated', 'Login required');
+  await assertActiveStaff(request, ['admin', 'office', 'technician', 'developer']);
   const { uid, patch } = request.data || {};
   if (!uid || !patch || typeof patch !== 'object') {
     throw new HttpsError('invalid-argument', 'uid and patch required');
@@ -926,8 +1405,14 @@ exports.updateEmployee = onCall({ region: 'us-central1' }, async (request) => {
 
   if (isAdminOrDev && fields.status === 'Terminated') {
     fields.active = false;
+    await auth.updateUser(uid, { disabled: true });
+    await auth.revokeRefreshTokens(uid);
   } else if (isAdminOrDev && fields.status && EMPLOYEE_STATUSES.includes(fields.status)) {
     fields.active = true;
+    if (snap.data().status === 'Terminated') {
+      await auth.updateUser(uid, { disabled: false });
+      await setRole(uid, fields.role || snap.data().role);
+    }
   }
 
   fields.updatedAt = FieldValue.serverTimestamp();
@@ -952,11 +1437,7 @@ exports.updateEmployee = onCall({ region: 'us-central1' }, async (request) => {
 
 /** Bootstrap messaging roster + shop channel for all active staff */
 exports.ensureMessaging = onCall({ region: 'us-central1' }, async (request) => {
-  if (!request.auth) throw new HttpsError('unauthenticated', 'Login required');
-  const role = request.auth.token.role;
-  if (!['admin', 'office', 'technician', 'developer'].includes(role)) {
-    throw new HttpsError('permission-denied', 'Staff only');
-  }
+  await assertActiveStaff(request, ['admin', 'office', 'technician', 'developer']);
 
   const usersSnap = await db.collection('users').get();
   let synced = 0;
@@ -972,7 +1453,7 @@ exports.ensureMessaging = onCall({ region: 'us-central1' }, async (request) => {
 
 /** List recent audit log entries (admin/developer only) — used for audit export */
 exports.listAuditLog = onCall({ region: 'us-central1' }, async (request) => {
-  assertAdminOrDev(request);
+  await assertAdminOrDev(request);
   const snap = await db.collection('audit_log').orderBy('at', 'desc').limit(500).get();
   const items = snap.docs.map((d) => {
     const data = d.data();
@@ -982,123 +1463,91 @@ exports.listAuditLog = onCall({ region: 'us-central1' }, async (request) => {
   return { ok: true, items };
 });
 
-/**
- * One-time bootstrap: creates staff Auth users, custom claims, and Firestore profiles.
- * Call after deploy with bootstrap secret (set via firebase functions:secrets:set BOOTSTRAP_SECRET)
- * or pass secret in request during first setup.
- */
-exports.bootstrapStaff = onCall({ region: 'us-central1' }, async (request) => {
-  const { secret, overwritePasswords } = request.data || {};
-  const expected = process.env.BOOTSTRAP_SECRET || 'alex-road-bootstrap-2026';
-  if (secret !== expected) {
-    throw new HttpsError('permission-denied', 'Invalid bootstrap secret');
-  }
-
-  const existing = await db.collection('users').limit(1).get();
-  if (!existing.empty && !request.auth?.token?.role?.match(/admin|developer/)) {
-    const meta = await db.collection('settings').doc('platform').get();
-    if (meta.exists && meta.data().bootstrapped) {
-      throw new HttpsError('already-exists', 'Already bootstrapped. Use setUserRole as admin/developer.');
-    }
-  }
-
-  const results = [];
-  for (const staff of STAFF_SEED) {
-    const email = staff.email.toLowerCase();
-    let userRecord;
-    try {
-      userRecord = await auth.getUserByEmail(email);
-      if (overwritePasswords) {
-        await auth.updateUser(userRecord.uid, { password: staff.password, displayName: staff.name });
-      }
-    } catch (e) {
-      if (e.code === 'auth/user-not-found') {
-        userRecord = await auth.createUser({
-          email,
-          password: staff.password,
-          displayName: staff.name,
-          emailVerified: true,
-        });
-      } else {
-        throw e;
-      }
-    }
-    await setRole(userRecord.uid, staff.role);
-    await upsertUserProfile(userRecord.uid, {
-      email,
-      name: staff.name,
-      role: staff.role,
-    });
-    results.push({ email, uid: userRecord.uid, role: staff.role });
-  }
-
-  await db.collection('settings').doc('platform').set({
-    bootstrapped: true,
-    bootstrappedAt: FieldValue.serverTimestamp(),
-    shopName: 'Alex Road Service',
-    laborRate: 95,
-    partsMarkup: 0.4,
-    taxRate: 0.06625,
-    paymentTermsDays: 14,
-  }, { merge: true });
-
-  await db.collection('settings').doc('shop').set({
-    shopName: 'Alex Road Service',
-    shopAddress: '406 Smith St, Keasbey, NJ 08832',
-    shopPhone: '(732) 938-0713',
-    shopEmail: 'info@alexroadservice.com',
-    laborRate: 95,
-    partsMarkup: 0.4,
-    taxRate: 0.06625,
-    paymentTermsDays: 14,
-  }, { merge: true });
-
-  return { ok: true, users: results, message: 'Change default passwords in Firebase Console immediately.' };
-});
-
 /** Create Stripe Checkout session for an invoice payment */
 exports.createStripeCheckout = onCall(
   { region: 'us-central1', secrets: ['STRIPE_SECRET_KEY'] },
   async (request) => {
-    assertPaymentRole(request);
+    await assertPaymentRole(request);
     const { invoiceId, amount } = request.data || {};
     if (!invoiceId) throw new HttpsError('invalid-argument', 'invoiceId required');
 
-    const invSnap = await db.collection('invoices').doc(invoiceId).get();
-    if (!invSnap.exists) throw new HttpsError('not-found', 'Invoice not found');
-    const inv = invSnap.data();
-    if (['Paid', 'Written Off'].includes(inv.status)) {
-      throw new HttpsError('failed-precondition', 'Invoice is already closed');
-    }
+    const invRef = db.collection('invoices').doc(invoiceId);
+    const reservationId = randomBytes(18).toString('base64url');
+    const reservation = await db.runTransaction(async (tx) => {
+      const invSnap = await tx.get(invRef);
+      if (!invSnap.exists) throw new HttpsError('not-found', 'Invoice not found');
+      const inv = invSnap.data();
+      if (['Paid', 'Written Off'].includes(inv.status)) {
+        throw new HttpsError('failed-precondition', 'Invoice is already closed');
+      }
 
-    const balance = (inv.total || 0) - (inv.amountPaid || 0);
-    const payAmount = amount != null ? Number(amount) : balance;
-    if (!payAmount || payAmount <= 0) throw new HttpsError('invalid-argument', 'Invalid amount');
-    if (payAmount > balance + 0.01) throw new HttpsError('invalid-argument', 'Amount exceeds invoice balance');
+      const existing = inv.checkoutReservation;
+      const existingAt = existing?.createdAt ? new Date(existing.createdAt).getTime() : 0;
+      if (existing?.id && Number.isFinite(existingAt) && Date.now() - existingAt < 30 * 60 * 1000) {
+        throw new HttpsError('already-exists', 'A checkout is already active for this invoice');
+      }
+
+      const balance = Math.round(((inv.total || 0) - (inv.amountPaid || 0)) * 100) / 100;
+      const payAmount = amount != null ? Number(amount) : balance;
+      if (!payAmount || payAmount <= 0) throw new HttpsError('invalid-argument', 'Invalid amount');
+      if (payAmount > balance + 0.01) {
+        throw new HttpsError('invalid-argument', 'Amount exceeds invoice balance');
+      }
+
+      tx.update(invRef, {
+        checkoutReservation: {
+          id: reservationId,
+          amount: payAmount,
+          createdAt: new Date().toISOString(),
+          createdBy: request.auth.uid,
+        },
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+      return { inv, payAmount };
+    });
 
     const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
-    const session = await stripe.checkout.sessions.create({
-      mode: 'payment',
-      payment_method_types: ['card'],
-      line_items: [{
-        price_data: {
-          currency: 'usd',
-          product_data: {
-            name: `Invoice ${invoiceId}`,
-            description: `${inv.customerName || 'Customer'} — Alex Road Service`,
+    let session;
+    try {
+      session = await stripe.checkout.sessions.create({
+        mode: 'payment',
+        payment_method_types: ['card'],
+        line_items: [{
+          price_data: {
+            currency: 'usd',
+            product_data: {
+              name: `Invoice ${invoiceId}`,
+              description: `${reservation.inv.customerName || 'Customer'} — Alex Road Service`,
+            },
+            unit_amount: Math.round(reservation.payAmount * 100),
           },
-          unit_amount: Math.round(payAmount * 100),
+          quantity: 1,
+        }],
+        metadata: {
+          invoiceId,
+          customerName: reservation.inv.customerName || '',
+          initiatedBy: request.auth.uid,
+          reservationId,
         },
-        quantity: 1,
-      }],
-      metadata: {
-        invoiceId,
-        customerName: inv.customerName || '',
-        initiatedBy: request.auth.uid,
-      },
-      success_url: `${HOSTING_URL}/app/payment-success.html?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${HOSTING_URL}/app/invoice-detail.html?id=${invoiceId}&cancelled=1`,
-    });
+        success_url: `${HOSTING_URL}/app/payment-success.html?session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${HOSTING_URL}/app/invoice-detail.html?id=${invoiceId}&cancelled=1`,
+      }, { idempotencyKey: `checkout_${invoiceId}_${reservationId}` });
+      await invRef.update({
+        'checkoutReservation.sessionId': session.id,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+    } catch (error) {
+      await db.runTransaction(async (tx) => {
+        const snap = await tx.get(invRef);
+        if (snap.data()?.checkoutReservation?.id === reservationId) {
+          tx.update(invRef, {
+            checkoutReservation: FieldValue.delete(),
+            updatedAt: FieldValue.serverTimestamp(),
+          });
+        }
+      }).catch(() => {});
+      throw new HttpsError('internal', error.message || 'Could not create Stripe checkout');
+    }
 
     return { url: session.url, sessionId: session.id };
   },
@@ -1108,7 +1557,7 @@ exports.createStripeCheckout = onCall(
 exports.createStripeRefund = onCall(
   { region: 'us-central1', secrets: ['STRIPE_SECRET_KEY'] },
   async (request) => {
-    assertAdminOrDev(request);
+    await assertAdminOrDev(request);
     const { paymentId, amount, reason } = request.data || {};
     if (!paymentId) throw new HttpsError('invalid-argument', 'paymentId required');
 
@@ -1215,6 +1664,20 @@ exports.createStripeRefund = onCall(
       throw new HttpsError('internal', msg);
     }
 
+    if (refund.status === 'pending') {
+      return {
+        ok: true,
+        pending: true,
+        refundId: refund.id,
+        paymentId,
+        amount: refundAmount,
+        stripeStatus: refund.status,
+      };
+    }
+    if (refund.status !== 'succeeded') {
+      throw new HttpsError('failed-precondition', `Stripe refund status is ${refund.status}`);
+    }
+
     try {
       const applied = await applyStripeRefund({
         paymentId,
@@ -1301,7 +1764,7 @@ exports.stripeWebhook = onRequest(
         }
       } else if (event.type === 'refund.updated' || event.type === 'refund.created') {
         const refund = event.data.object;
-        if (refund.status === 'succeeded' || refund.status === 'pending') {
+        if (refund.status === 'succeeded') {
           const paymentIntentId = typeof refund.payment_intent === 'string'
             ? refund.payment_intent
             : refund.payment_intent?.id;

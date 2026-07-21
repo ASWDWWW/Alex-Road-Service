@@ -4,6 +4,23 @@ window.ARS = window.ARS || {};
 ARS.MediaUI = {
   _lightboxBound: false,
 
+  _esc(value) {
+    return ARS.escapeHTML(value ?? '');
+  },
+
+  _safeUrl(value) {
+    try {
+      const url = new URL(String(value || ''), location.origin);
+      if (url.protocol === 'blob:') return url.href;
+      const allowedHost = ['firebasestorage.googleapis.com', 'storage.googleapis.com'].includes(url.hostname)
+        || url.hostname.endsWith('.firebasestorage.app')
+        || url.hostname.endsWith('.appspot.com');
+      return url.protocol === 'https:' && allowedHost ? url.href : '';
+    } catch {
+      return '';
+    }
+  },
+
   ensureLightbox() {
     if (document.getElementById('arsMediaLightbox')) return;
     document.body.insertAdjacentHTML('beforeend', `
@@ -27,13 +44,25 @@ ARS.MediaUI = {
     const cap = document.getElementById('arsMediaLightboxCaption');
     const isVid = (item.contentType || '').startsWith('video/');
     const isPdf = item.contentType === 'application/pdf';
-    if (isVid) {
-      body.innerHTML = `<video src="${item.url}" controls autoplay playsinline style="max-width:100%;max-height:80vh"></video>`;
-    } else if (isPdf) {
-      body.innerHTML = `<iframe src="${item.url}" title="${item.name || 'PDF'}" style="width:min(900px,94vw);height:80vh;border:0;background:#fff"></iframe>`;
-    } else {
-      body.innerHTML = `<img src="${item.url}" alt="${item.name || ''}">`;
+    const safeUrl = this._safeUrl(item.url);
+    if (!safeUrl) {
+      showToast('This media URL is not allowed', 'error');
+      return;
     }
+    const media = document.createElement(isVid ? 'video' : isPdf ? 'iframe' : 'img');
+    media.src = safeUrl;
+    if (isVid) {
+      media.controls = true;
+      media.autoplay = true;
+      media.playsInline = true;
+      media.style.cssText = 'max-width:100%;max-height:80vh';
+    } else if (isPdf) {
+      media.title = item.name || 'PDF';
+      media.style.cssText = 'width:min(900px,94vw);height:80vh;border:0;background:#fff';
+    } else {
+      media.alt = item.name || '';
+    }
+    body.replaceChildren(media);
     cap.textContent = [item.tag, item.name, item.uploadedByName].filter(Boolean).join(' · ');
     box.hidden = false;
   },
@@ -74,13 +103,13 @@ ARS.MediaUI = {
       el.innerHTML = `
         <div class="media-gallery" data-media-root>
           <div class="media-gallery__header">
-            <div class="media-gallery__title"><i class="fas fa-camera"></i> ${state.title}</div>
+            <div class="media-gallery__title"><i class="fas fa-camera"></i> ${this._esc(state.title)}</div>
             <div class="media-gallery__count">${media.length} file${media.length === 1 ? '' : 's'}</div>
           </div>
           ${canUp ? `
           <div class="media-gallery__upload">
             <select class="form-select media-gallery__tag" data-media-tag>
-              ${tags.map((t) => `<option value="${t.id}"${t.id === state.tag ? ' selected' : ''}>${t.label}</option>`).join('')}
+              ${tags.map((t) => `<option value="${this._esc(t.id)}"${t.id === state.tag ? ' selected' : ''}>${this._esc(t.label)}</option>`).join('')}
             </select>
             <label class="btn btn--secondary btn--sm media-gallery__pick">
               <i class="fas fa-cloud-upload-alt"></i> Add files
@@ -93,7 +122,7 @@ ARS.MediaUI = {
           </div>` : ''}
           <div class="media-gallery__grid" data-media-grid>
             ${media.length ? media.map((m) => this._tile(m, canDel)).join('') : `
-              <div class="media-gallery__empty">${opts.emptyText || 'No photos or videos yet.'}</div>`}
+              <div class="media-gallery__empty">${this._esc(opts.emptyText || 'No photos or videos yet.')}</div>`}
           </div>
         </div>`;
 
@@ -141,22 +170,27 @@ ARS.MediaUI = {
     const isVid = (m.contentType || '').startsWith('video/');
     const isPdf = m.contentType === 'application/pdf';
     const tag = m.tag || 'other';
+    const safeUrl = this._safeUrl(m.url);
+    const id = this._esc(m.id);
+    const name = this._esc(m.name || 'file');
     let thumb;
     if (isVid) {
       thumb = `<div class="media-tile__thumb media-tile__thumb--video"><i class="fas fa-play-circle"></i></div>`;
     } else if (isPdf) {
       thumb = `<div class="media-tile__thumb media-tile__thumb--pdf"><i class="fas fa-file-pdf"></i></div>`;
     } else {
-      thumb = `<div class="media-tile__thumb" style="background-image:url('${m.url}')"></div>`;
+      thumb = safeUrl
+        ? `<img class="media-tile__thumb" src="${this._esc(safeUrl)}" alt="">`
+        : '<div class="media-tile__thumb"><i class="fas fa-image"></i></div>';
     }
     return `
       <div class="media-tile">
-        <button type="button" class="media-tile__open" data-media-open="${m.id}" title="View">${thumb}</button>
+        <button type="button" class="media-tile__open" data-media-open="${id}" title="View">${thumb}</button>
         <div class="media-tile__meta">
-          <span class="media-tile__tag">${tag}</span>
-          <span class="media-tile__name" title="${m.name || ''}">${m.name || 'file'}</span>
+          <span class="media-tile__tag">${this._esc(tag)}</span>
+          <span class="media-tile__name" title="${name}">${name}</span>
         </div>
-        ${canDel ? `<button type="button" class="media-tile__del" data-media-del="${m.id}" title="Delete"><i class="fas fa-trash"></i></button>` : ''}
+        ${canDel ? `<button type="button" class="media-tile__del" data-media-del="${id}" title="Delete"><i class="fas fa-trash"></i></button>` : ''}
       </div>`;
   },
 
@@ -219,16 +253,22 @@ ARS.MediaUI = {
       const grid = el.querySelector('[data-pl-grid]');
       const count = el.querySelector('[data-pl-count]');
       count.textContent = pending.length ? `${pending.length} file${pending.length === 1 ? '' : 's'}` : 'Optional';
-      grid.innerHTML = pending.map((m) => `
+      grid.innerHTML = pending.map((m) => {
+        const id = this._esc(m.id);
+        const safeUrl = this._safeUrl(m.url);
+        return `
         <div class="media-tile">
-          <button type="button" class="media-tile__open" data-pl-open="${m.id}">
+          <button type="button" class="media-tile__open" data-pl-open="${id}">
             ${(m.contentType || '').startsWith('video/')
               ? '<div class="media-tile__thumb media-tile__thumb--video"><i class="fas fa-play-circle"></i></div>'
-              : `<div class="media-tile__thumb" style="background-image:url('${m.url}')"></div>`}
+              : safeUrl
+                ? `<img class="media-tile__thumb" src="${this._esc(safeUrl)}" alt="">`
+                : '<div class="media-tile__thumb"><i class="fas fa-image"></i></div>'}
           </button>
-          <div class="media-tile__meta"><span class="media-tile__tag">${m.tag}</span></div>
-          <button type="button" class="media-tile__del" data-pl-del="${m.id}"><i class="fas fa-trash"></i></button>
-        </div>`).join('');
+          <div class="media-tile__meta"><span class="media-tile__tag">${this._esc(m.tag)}</span></div>
+          <button type="button" class="media-tile__del" data-pl-del="${id}"><i class="fas fa-trash"></i></button>
+        </div>`;
+      }).join('');
       onChange?.(pending);
     };
 
@@ -290,13 +330,14 @@ ARS.MediaUI = {
   } = {}) {
     if (!el) return;
     const render = (url) => {
+      const safeUrl = this._safeUrl(url);
       el.innerHTML = `
         <div class="media-single">
-          <div class="media-single__preview" style="${url ? `background-image:url('${url}')` : ''}">
-            ${url ? '' : '<i class="fas fa-image"></i>'}
+          <div class="media-single__preview">
+            ${safeUrl ? '' : '<i class="fas fa-image"></i>'}
           </div>
           <div class="media-single__actions">
-            <div class="media-single__title">${title}</div>
+            <div class="media-single__title">${this._esc(title)}</div>
             ${canEdit ? `
               <label class="btn btn--secondary btn--sm">
                 <i class="fas fa-upload"></i> ${url ? 'Replace' : 'Upload'}
@@ -306,6 +347,8 @@ ARS.MediaUI = {
             ` : ''}
           </div>
         </div>`;
+      const preview = el.querySelector('.media-single__preview');
+      if (preview && safeUrl) preview.style.backgroundImage = `url("${safeUrl}")`;
       el.querySelector('[data-single-input]')?.addEventListener('change', async (e) => {
         const file = e.target.files?.[0];
         e.target.value = '';

@@ -634,7 +634,6 @@ ARS.Messaging = {
     await addDoc(collection(db, 'conversations', convoId, 'messages'), msg);
     await updateDoc(doc(db, 'conversations', convoId), {
       lastMessageAt: msg.createdAt,
-      lastMessagePreview: preview,
       lastMessageBy: this._uid,
       updatedAt: msg.createdAt,
     });

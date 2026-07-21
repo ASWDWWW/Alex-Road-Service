@@ -6,7 +6,7 @@
   <link rel="icon" href="/favicon.ico" sizes="any">
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <title>Dashboard | Alex Road Service Ops</title>
-  <link rel="stylesheet" href="/app/css/app.css?v=20260720w">
+  <link rel="stylesheet" href="/app/css/app.css?v=20260721c">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
 </head>
 <body class="app-body">
@@ -140,17 +140,50 @@
   </div><!-- /app-content -->
 </main>
 
-<script src="/app/js/utils.js?v=20260720w"></script>
-<script src="/app/js/demo-mode.js?v=20260720w"></script>
-<script src="/app/js/data-store.js?v=20260720w"></script>
-<script src="/app/js/auth.js?v=20260720w"></script>
-<script src="/app/js/data-service.js?v=20260720w"></script>
-<script src="/app/js/page-scripts.js?v=20260720w"></script>
-<script src="/app/js/app-components.js?v=20260720w"></script>
+<script src="/app/js/utils.js?v=20260721c"></script>
+<script src="/app/js/demo-mode.js?v=20260721c"></script>
+<script src="/app/js/data-store.js?v=20260721c"></script>
+<script src="/app/js/auth.js?v=20260721c"></script>
+<script src="/app/js/data-service.js?v=20260721c"></script>
+<script src="/app/js/page-scripts.js?v=20260721c"></script>
+<script src="/app/js/app-components.js?v=20260721c"></script>
 <script>
   const SCHED_DOTS = { 'In Progress': 'red', 'Open': 'amber', 'Waiting Parts': 'amber', default: 'green' };
 
+  function dashboardEmployeeId() {
+    return ARS.Auth.getRole() === 'technician' ? ARS.Auth.getUser()?.uid : null;
+  }
+
+  function dashboardScheduleItems(today) {
+    if (!ARS.Schedule) return [];
+    return ARS.Schedule.eventsForDay(today, dashboardEmployeeId()).slice(0, 5).map((event) => {
+      const names = event.employeeNames
+        ? Object.values(event.employeeNames).join(', ')
+        : (event.employeeIds || []).map((uid) => ARS.Data.getEmployee(uid)?.name || uid).join(', ');
+      const time = event.allDay
+        ? 'All day'
+        : new Date(event.startAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+      if (event.source === 'workOrder') {
+        return {
+          href: `/app/work-order-detail.html?id=${event.workOrderId}`,
+          time,
+          dot: SCHED_DOTS[event.status] || 'amber',
+          title: event.title,
+          sub: `${event.desc || event.status || 'Work order'}${names ? ` — ${names}` : ''}`,
+        };
+      }
+      return {
+        href: `/app/schedule.html?view=day&date=${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`,
+        time,
+        dot: event.source === 'shift' ? 'green' : 'red',
+        title: event.title,
+        sub: `${event.source === 'shift' ? 'Scheduled hours' : ARS.Schedule.typeMeta(event.type).label}${names ? ` — ${names}` : ''}`,
+      };
+    });
+  }
+
   function renderDashboard() {
+    const esc = ARS.escapeHTML;
     ARS.Data.refreshOverdueInvoices();
     const kpis = ARS.Data.getDashboardKPIs();
     const today = new Date();
@@ -181,12 +214,12 @@
     const recent = ARS.Data.listWorkOrders().slice(0, 6);
     document.getElementById('dashWoTable').innerHTML = recent.length
       ? recent.map(w => `
-      <tr data-row-id="${w.id}" style="cursor:pointer">
+      <tr data-row-id="${esc(w.id)}" style="cursor:pointer">
         <td class="td-mono td-bold">${ARS.Pages.entityLink(w.id, `/app/work-order-detail.html?id=${w.id}`)}</td>
-        <td class="td-muted">${w.date}</td>
+        <td class="td-muted">${esc(w.date)}</td>
         <td class="td-primary">${ARS.Pages.entityLink(w.customerName, w.customerId ? `/app/customer-detail.html?id=${w.customerId}` : '')}</td>
-        <td class="td-muted" style="font-size:.78rem">${w.truckId ? ARS.Pages.entityLink(w.truckLabel || '—', `/app/truck-detail.html?id=${w.truckId}`) : (w.truckLabel || '—')}</td>
-        <td class="td-muted">${ARS.Data.formatWoTechs(w)}</td>
+        <td class="td-muted" style="font-size:.78rem">${w.truckId ? ARS.Pages.entityLink(w.truckLabel || '—', `/app/truck-detail.html?id=${encodeURIComponent(w.truckId)}`) : esc(w.truckLabel || '—')}</td>
+        <td class="td-muted">${esc(ARS.Data.formatWoTechs(w))}</td>
         <td>${chip(w.status)}</td>
         <td style="text-align:right;font-weight:700">${fmt$(w.total)}</td>
       </tr>
@@ -194,25 +227,18 @@
       : ARS.Pages.tablePlaceholder(7, 'No work orders yet', 'fa-clipboard-list');
 
     document.getElementById('dashScheduleTitle').textContent = `Today's Schedule — ${todayStr}`;
-    const openWOs = ARS.Data.listWorkOrders().filter(w => ['Open', 'In Progress', 'Waiting Parts'].includes(w.status)).slice(0, 3);
-    const pendingEst = ARS.Data.listEstimates().filter(e => ['Pending', 'Sent'].includes(e.status)).slice(0, 1);
-    const pmDue = ARS.Data.trucksPMDue(30).slice(0, 1);
-    const scheduleItems = [
-      ...openWOs.map(w => ({ href: `/app/work-order-detail.html?id=${w.id}`, time: null, dot: SCHED_DOTS[w.status] || 'amber', title: `${w.id} · ${w.customerName}`, sub: `${w.desc} — ${ARS.Data.formatWoTechs(w, 'Unassigned')}` })),
-      ...pendingEst.map(e => ({ href: `/app/estimate-detail.html?id=${e.id}`, time: null, dot: 'green', title: `${e.id} · ${e.customerName}`, sub: `Estimate follow-up — ${e.desc}` })),
-      ...pmDue.map(t => ({ href: `/app/truck-detail.html?id=${t.id}`, time: null, dot: 'green', title: `PM Due · ${t.make} ${t.model} (Unit ${t.unit})`, sub: `Schedule PM with ${t.owner}` })),
-    ].slice(0, 5);
+    const scheduleItems = dashboardScheduleItems(today);
 
     document.getElementById('dashSchedule').innerHTML = scheduleItems.length ? scheduleItems.map((item) => {
       const inner = `
-        <div class="sched-time">${item.time || 'Today'}</div>
-        <div class="sched-dot ${item.dot}"></div>
+        <div class="sched-time">${esc(item.time || 'Today')}</div>
+        <div class="sched-dot ${esc(item.dot)}"></div>
         <div>
-          <div class="sched-title">${item.title}</div>
-          <div class="sched-sub">${item.sub}</div>
+          <div class="sched-title">${esc(item.title)}</div>
+          <div class="sched-sub">${esc(item.sub)}</div>
         </div>`;
       return item.href
-        ? `<a href="${ARS.Pages.appHref(item.href)}" class="sched-item" style="text-decoration:none;color:inherit">${inner}</a>`
+        ? `<a href="${esc(ARS.Pages.appHref(item.href))}" class="sched-item" style="text-decoration:none;color:inherit">${inner}</a>`
         : `<div class="sched-item">${inner}</div>`;
     }).join('') : (ARS.Pages.isDataReady()
       ? '<div style="padding:20px;color:var(--steel);font-size:.85rem">No scheduled items</div>'
@@ -222,21 +248,23 @@
     const alertClass = { red: 'alert-item--red', amber: 'alert-item--amber', blue: 'alert-item--blue' };
     document.getElementById('dashAlerts').innerHTML = alerts.length ? alerts.map(a => {
       const inner = `
-        <i class="fas ${a.icon} alert-item__icon"></i>
+        <i class="fas ${esc(a.icon)} alert-item__icon"></i>
         <div>
-          <div class="alert-item__title">${a.title}</div>
-          <div class="alert-item__desc">${a.desc}</div>
+          <div class="alert-item__title">${esc(a.title)}</div>
+          <div class="alert-item__desc">${esc(a.desc)}</div>
         </div>`;
       const cls = `alert-item ${alertClass[a.type] || 'alert-item--blue'}`;
       return a.href
-        ? `<a href="${ARS.Pages.appHref(a.href)}" class="${cls}" style="text-decoration:none;color:inherit">${inner}</a>`
+        ? `<a href="${esc(ARS.Pages.appHref(a.href))}" class="${cls}" style="text-decoration:none;color:inherit">${inner}</a>`
         : `<div class="${cls}">${inner}</div>`;
     }).join('') : (ARS.Pages.isDataReady()
       ? '<div style="padding:8px;color:var(--steel);font-size:.85rem">No alerts</div>'
       : '<div class="loading-state" style="padding:16px"><div class="loading-state__spinner"></div><div class="loading-state__text">Loading…</div></div>');
   }
 
-  ARS.Pages.waitReady(() => {
+  ARS.Pages.waitReady(async () => {
+    const today = new Date();
+    await ARS.Schedule?.listenRange(today, today, dashboardEmployeeId());
     renderDashboard();
     ARS.Pages.bindKpiFilter('dashOpenWOs', '/app/work-orders.html?status=actionable');
     ARS.Pages.bindKpiFilter('dashOutstanding', '/app/invoices.html?status=Overdue');
@@ -249,6 +277,7 @@
       if (tr) window.location.href = ARS.Pages.appHref(`/app/work-order-detail.html?id=${tr.dataset.rowId}`);
     });
     document.addEventListener('ars:data-changed', renderDashboard);
+    document.addEventListener('ars:schedule-changed', renderDashboard);
   });
 </script>
 </body>

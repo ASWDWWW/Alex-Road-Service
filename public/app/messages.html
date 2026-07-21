@@ -139,7 +139,7 @@
 <script src="/app/js/auth.js?v=20260720w"></script>
 <script src="/app/js/data-service.js?v=20260720w"></script>
 <script src="/app/js/page-scripts.js?v=20260720w"></script>
-<script src="/app/js/app-components.js?v=20260720w"></script>
+<script src="/app/js/app-components.js?v=20260721c"></script>
 <script>
   let activeId = '';
   let convoFilter = '';
@@ -149,6 +149,18 @@
     return String(s ?? '').replace(/[&<>"']/g, (c) => ({
       '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
     }[c]));
+  }
+
+  function safeAttachmentUrl(value) {
+    try {
+      const url = new URL(String(value || ''));
+      const allowedHost = url.hostname === 'firebasestorage.googleapis.com'
+        || url.hostname.endsWith('.firebasestorage.app')
+        || url.hostname.endsWith('.appspot.com');
+      return url.protocol === 'https:' && allowedHost ? url.href : '';
+    } catch {
+      return '';
+    }
   }
 
   function fmtTime(iso) {
@@ -294,10 +306,11 @@
       const att = m.attachment;
       let attHtml = '';
       if (att?.url) {
-        if ((att.contentType || '').startsWith('image/')) {
-          attHtml = `<a href="${esc(att.url)}" target="_blank" rel="noopener"><img class="msg-bubble__img" src="${esc(att.url)}" alt=""></a>`;
-        } else {
-          attHtml = `<a class="msg-bubble__file" href="${esc(att.url)}" target="_blank" rel="noopener"><i class="fas fa-file"></i> ${esc(att.name || 'Attachment')}</a>`;
+        const attachmentUrl = safeAttachmentUrl(att.url);
+        if (attachmentUrl && (att.contentType || '').startsWith('image/')) {
+          attHtml = `<a href="${esc(attachmentUrl)}" target="_blank" rel="noopener"><img class="msg-bubble__img" src="${esc(attachmentUrl)}" alt=""></a>`;
+        } else if (attachmentUrl) {
+          attHtml = `<a class="msg-bubble__file" href="${esc(attachmentUrl)}" target="_blank" rel="noopener"><i class="fas fa-file"></i> ${esc(att.name || 'Attachment')}</a>`;
         }
       } else if (att?.demo) {
         attHtml = `<div class="msg-bubble__file"><i class="fas fa-file"></i> ${esc(att.name)} (demo)</div>`;

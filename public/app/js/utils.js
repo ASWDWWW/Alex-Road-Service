@@ -1,6 +1,6 @@
 /* Alex Road Service — Shared Utilities */
 window.ARS = window.ARS || {};
-ARS.APP_BUILD = '20260720w';
+ARS.APP_BUILD = '20260721d';
 
 ARS.fmtMoney = (n) => '$' + Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -28,6 +28,14 @@ ARS.initials = (name) => {
 ARS.uid = () => 'id_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 
 ARS.nextId = (prefix, year, num) => `${prefix}-${year}-${String(num).padStart(4, '0')}`;
+
+ARS.escapeHTML = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({
+  '&': '&amp;',
+  '<': '&lt;',
+  '>': '&gt;',
+  '"': '&quot;',
+  "'": '&#39;',
+}[char]));
 
 ARS.inventoryStatus = (qty, min) => {
   if (qty <= 0) return 'Out of Stock';

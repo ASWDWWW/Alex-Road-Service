@@ -134,11 +134,6 @@ document.addEventListener('DOMContentLoaded', () => {
   const successAlert  = document.getElementById('formSuccess');
   const errorAlert    = document.getElementById('formError');
 
-  const contactMediaMount = document.getElementById('contactMediaMount');
-  if (contactMediaMount && window.ARS?.MediaUI?.mountPublicLeadUploader) {
-    window.__leadMedia = window.ARS.MediaUI.mountPublicLeadUploader(contactMediaMount);
-  }
-
   contactForm?.addEventListener('submit', async (e) => {
     e.preventDefault();
     const btn = contactForm.querySelector('[type="submit"]');
@@ -157,15 +152,14 @@ document.addEventListener('DOMContentLoaded', () => {
       message:   contactForm.elements['message']?.value  || '',
       timestamp: new Date().toISOString(),
       source:    'website-contact-form',
-      media:     window.__leadMedia?.getMedia?.() || [],
+      media:     [],
     };
 
     try {
       if (typeof window.submitContactForm === 'function') {
         await window.submitContactForm(data);
       } else {
-        // Fallback: simulate success for demo
-        await new Promise(r => setTimeout(r, 900));
+        throw new Error('Online request service is unavailable');
       }
       successAlert?.classList.add('show');
       errorAlert?.classList.remove('show');

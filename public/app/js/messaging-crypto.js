@@ -2,8 +2,47 @@
 window.ARS = window.ARS || {};
 
 const MSG_PRIV_PREFIX = 'ars_msg_priv_v1_';
+const MSG_KEY_DB = 'ars_messaging_keys_v2';
+const MSG_KEY_STORE = 'identities';
 const WRAP_INFO = 'ars-msg-wrap-v1';
 const MSG_INFO = 'ars-msg-body-v1';
+
+function openIdentityDb() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(MSG_KEY_DB, 1);
+    request.onupgradeneeded = () => {
+      if (!request.result.objectStoreNames.contains(MSG_KEY_STORE)) {
+        request.result.createObjectStore(MSG_KEY_STORE);
+      }
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+async function loadStoredIdentity(uid) {
+  const db = await openIdentityDb();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(MSG_KEY_STORE, 'readonly');
+    const request = transaction.objectStore(MSG_KEY_STORE).get(uid);
+    request.onsuccess = () => resolve(request.result || null);
+    request.onerror = () => reject(request.error);
+    transaction.oncomplete = () => db.close();
+  });
+}
+
+async function saveStoredIdentity(uid, keyPair) {
+  const db = await openIdentityDb();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(MSG_KEY_STORE, 'readwrite');
+    transaction.objectStore(MSG_KEY_STORE).put(keyPair, uid);
+    transaction.oncomplete = () => {
+      db.close();
+      resolve();
+    };
+    transaction.onerror = () => reject(transaction.error);
+  });
+}
 
 function b64encode(buf) {
   const bytes = buf instanceof ArrayBuffer ? new Uint8Array(buf) : buf;
@@ -32,23 +71,19 @@ ARS.MsgCrypto = {
     return crypto.subtle.exportKey('jwk', publicKey);
   },
 
-  async exportPrivateJwk(privateKey) {
-    return crypto.subtle.exportKey('jwk', privateKey);
-  },
-
   async importPublicJwk(jwk) {
     return crypto.subtle.importKey('jwk', jwk, { name: 'ECDH', namedCurve: 'P-256' }, true, []);
   },
 
   async importPrivateJwk(jwk) {
-    return crypto.subtle.importKey('jwk', jwk, { name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveBits']);
+    return crypto.subtle.importKey('jwk', jwk, { name: 'ECDH', namedCurve: 'P-256' }, false, ['deriveBits']);
   },
 
   storageKey(uid) {
     return MSG_PRIV_PREFIX + uid;
   },
 
-  loadPrivateJwk(uid) {
+  loadLegacyPrivateJwk(uid) {
     try {
       const raw = localStorage.getItem(this.storageKey(uid));
       return raw ? JSON.parse(raw) : null;
@@ -57,30 +92,52 @@ ARS.MsgCrypto = {
     }
   },
 
-  savePrivateJwk(uid, jwk) {
-    localStorage.setItem(this.storageKey(uid), JSON.stringify(jwk));
-  },
-
   async ensureIdentity(uid) {
-    let privJwk = this.loadPrivateJwk(uid);
-    let keyPair;
-    if (privJwk) {
-      const privateKey = await this.importPrivateJwk(privJwk);
+    let keyPair = await loadStoredIdentity(uid);
+    if (!keyPair) {
+      const legacyPrivateJwk = this.loadLegacyPrivateJwk(uid);
+      if (legacyPrivateJwk) {
+        const privateKey = await this.importPrivateJwk(legacyPrivateJwk);
+        const publicKey = await crypto.subtle.importKey(
+          'jwk',
+          {
+            kty: legacyPrivateJwk.kty,
+            crv: legacyPrivateJwk.crv,
+            x: legacyPrivateJwk.x,
+            y: legacyPrivateJwk.y,
+            ext: true,
+          },
+          { name: 'ECDH', namedCurve: 'P-256' },
+          true,
+          [],
+        );
+        keyPair = { privateKey, publicKey };
+        await saveStoredIdentity(uid, keyPair);
+        localStorage.removeItem(this.storageKey(uid));
+      }
+    }
+    if (!keyPair) {
+      const generated = await this.generateKeyPair();
+      const privateJwk = await crypto.subtle.exportKey('jwk', generated.privateKey);
+      const privateKey = await this.importPrivateJwk(privateJwk);
       const publicKey = await crypto.subtle.importKey(
         'jwk',
-        { kty: privJwk.kty, crv: privJwk.crv, x: privJwk.x, y: privJwk.y, ext: true },
+        {
+          kty: privateJwk.kty,
+          crv: privateJwk.crv,
+          x: privateJwk.x,
+          y: privateJwk.y,
+          ext: true,
+        },
         { name: 'ECDH', namedCurve: 'P-256' },
         true,
         [],
       );
       keyPair = { privateKey, publicKey };
-    } else {
-      keyPair = await this.generateKeyPair();
-      privJwk = await this.exportPrivateJwk(keyPair.privateKey);
-      this.savePrivateJwk(uid, privJwk);
+      await saveStoredIdentity(uid, keyPair);
     }
     const publicJwk = await this.exportPublicJwk(keyPair.publicKey);
-    return { keyPair, publicJwk, privateJwk: privJwk };
+    return { keyPair, publicJwk };
   },
 
   async deriveWrapKey(privateKey, theirPublicJwk, conversationId) {

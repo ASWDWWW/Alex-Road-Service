@@ -1,16 +1,18 @@
 # Alex Road Service — Operations Runbook
 
-## Environments
+## Production
 
-| Env | Firebase Project | URL |
-|-----|------------------|-----|
-| Staging | `alex-road-staging` (configure) | TBD |
-| Production | `launchpage-alex-roadservice` | Custom domain |
+| Firebase Project | URL |
+|------------------|-----|
+| `launchpage-alex-roadservice` | Custom domain / Firebase Hosting |
+
+This platform currently operates a single production environment. Validation must run locally and in pull-request CI before deployment.
 
 ## Deploy
 
 ```bash
-firebase deploy --only hosting,firestore:rules,functions
+npm run check
+firebase deploy --only hosting,functions,firestore:rules,firestore:indexes,storage
 ```
 
 ## Local development
@@ -23,13 +25,9 @@ Open http://localhost:3000 — ops platform requires Firebase Authentication (no
 
 ## Staff login
 
-Bootstrap accounts via `/setup.html` or `npm run bootstrap`, then sign in at `/login.html` with Firebase credentials.
+Provision the initial administrator from a trusted Firebase Admin environment. Create subsequent staff from the Employees screen; each employee establishes a unique password through the emailed setup link.
 
-| Email | Password | Notes |
-|-------|----------|-------|
-| demo@alexroadservice.com | Demo2026! | Demo sandbox — no bootstrap required |
-
-Full staff list: [`Development Docs/STAFF_CREDENTIALS.md`](../Development%20Docs/STAFF_CREDENTIALS.md)
+The public demo sandbox is client-only and has no access to Firebase or Stripe.
 
 Payments are collected only through Stripe Checkout — see `docs/STRIPE_SETUP.md`.
 

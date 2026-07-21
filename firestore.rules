@@ -10,12 +10,20 @@ service cloud.firestore {
       return request.auth.token.role;
     }
 
+    function isActiveStaff() {
+      return isAuth()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.active == true
+        && !(get(/databases/$(database)/documents/users/$(request.auth.uid)).data.status
+          in ['Archived', 'Terminated']);
+    }
+
     function isDeveloper() {
-      return isAuth() && role() == 'developer';
+      return isActiveStaff() && role() == 'developer';
     }
 
     function isAdmin() {
-      return isAuth() && role() == 'admin';
+      return isActiveStaff() && role() == 'admin';
     }
 
     function isAdminOrDev() {
@@ -23,20 +31,23 @@ service cloud.firestore {
     }
 
     function isOffice() {
-      return isAuth() && role() in ['admin', 'office', 'developer'];
+      return isActiveStaff() && role() in ['admin', 'office', 'developer'];
     }
 
     function isTech() {
-      return isAuth() && role() in ['admin', 'office', 'technician', 'developer'];
+      return isActiveStaff() && role() in ['admin', 'office', 'technician', 'developer'];
     }
 
     match /users/{userId} {
-      // Office needs to list technicians for WO assignment and view the employee directory
-      allow read: if isAuth() && (request.auth.uid == userId || isOffice() || isAdminOrDev());
+      allow read: if isActiveStaff()
+        && (request.auth.uid == userId || isAdminOrDev());
       allow create: if isAdminOrDev();
       allow update: if isAdminOrDev()
-        || (isAuth()
+        || (isActiveStaff()
           && request.auth.uid == userId
+          && request.resource.data.role == resource.data.role
+          && request.resource.data.active == resource.data.active
+          && request.resource.data.status == resource.data.status
           && request.resource.data.diff(resource.data).affectedKeys()
               .hasOnly([
                 'phone', 'address', 'emergencyContact', 'photoURL',
@@ -48,33 +59,33 @@ service cloud.firestore {
 
     match /customers/{docId} {
       allow read: if isTech();
-      allow create, update: if isOffice();
-      allow delete: if isDeveloper();
+      allow write: if false;
     }
 
     match /trucks/{docId} {
       allow read: if isTech();
-      allow create, update: if isOffice();
-      allow delete: if isDeveloper();
+      allow write: if false;
     }
 
     match /workOrders/{docId} {
-      allow read: if isTech();
-      allow create: if isOffice();
-      allow update: if isOffice() || (isAuth() && role() == 'technician');
-      allow delete: if isDeveloper();
+      function assignedTechnician(data) {
+        return isActiveStaff()
+          && role() == 'technician'
+          && data.techIds is list
+          && request.auth.uid in data.techIds;
+      }
+      allow read: if isOffice() || assignedTechnician(resource.data);
+      allow write: if false;
     }
 
     match /estimates/{docId} {
       allow read: if isTech();
-      allow create, update: if isOffice();
-      allow delete: if isDeveloper();
+      allow write: if false;
     }
 
     match /invoices/{docId} {
       allow read: if isOffice();
-      allow create, update: if isOffice();
-      allow delete: if isDeveloper();
+      allow write: if false;
     }
 
     match /payments/{docId} {
@@ -88,25 +99,24 @@ service cloud.firestore {
 
     match /inventory/{docId} {
       allow read: if isTech();
-      allow create, update: if isOffice();
-      allow delete: if isDeveloper();
+      allow write: if false;
     }
 
     match /inventoryTransactions/{docId} {
       allow read: if isOffice();
-      allow create, update: if isOffice();
-      allow delete: if isDeveloper();
+      allow write: if false;
     }
 
     match /notifications/{docId} {
-      allow read, update: if isAuth() && (resource.data.userId == request.auth.uid || isAdminOrDev());
+      allow read, update: if isActiveStaff()
+        && (resource.data.userId == request.auth.uid || isAdminOrDev());
       allow create: if isOffice();
       allow delete: if isDeveloper();
     }
 
     match /settings/{docId} {
-      allow read: if isAuth();
-      allow write: if isAdminOrDev();
+      allow read: if isActiveStaff();
+      allow write: if false;
     }
 
     match /audit_log/{docId} {
@@ -119,12 +129,9 @@ service cloud.firestore {
     }
 
     match /contact_submissions/{docId} {
-      allow create: if request.resource.data.keys().hasAll(['name', 'email', 'createdAt'])
-        && request.resource.data.name is string
-        && request.resource.data.email is string;
+      allow create: if false;
       allow read: if isOffice();
-      allow update: if isOffice();
-      allow delete: if isDeveloper();
+      allow update, delete: if false;
     }
 
     // Legacy camelCase collection — read-only; app uses contact_submissions
@@ -137,7 +144,7 @@ service cloud.firestore {
     match /messagingRoster/{uid} {
       allow read: if isTech();
       allow create: if false;
-      allow update: if isAuth()
+      allow update: if isActiveStaff()
         && request.auth.uid == uid
         && request.resource.data.uid == uid
         && request.resource.data.diff(resource.data).affectedKeys()
@@ -148,10 +155,10 @@ service cloud.firestore {
     // Internal E2EE staff messaging — ciphertext only; plaintext never stored server-side
     match /conversations/{cid} {
       function isParticipant() {
-        return isAuth() && request.auth.uid in resource.data.participantIds;
+        return isActiveStaff() && request.auth.uid in resource.data.participantIds;
       }
       function creatingAsParticipant() {
-        return isAuth()
+        return isActiveStaff()
           && request.auth.uid in request.resource.data.participantIds
           && request.resource.data.participantIds is list
           && request.resource.data.participantIds.size() >= 2
@@ -160,28 +167,33 @@ service cloud.firestore {
       }
 
       // Allow get on missing docs so clients can check deterministic DM ids before create
-      allow get: if isAuth() && (
+      allow get: if isActiveStaff() && (
         !exists(/databases/$(database)/documents/conversations/$(cid))
         || isParticipant()
       );
       // List queries must be scoped with participantIds array-contains (enforced by client)
       allow list: if isParticipant();
       allow create: if creatingAsParticipant();
-      allow update: if isParticipant();
+      allow update: if isParticipant()
+        && request.resource.data.participantIds == resource.data.participantIds
+        && request.resource.data.createdBy == resource.data.createdBy
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'title', 'wrappedKeys', 'participantPublicKeys', 'e2ee',
+          'lastMessageAt', 'lastMessageBy', 'lastReadAt', 'updatedAt'
+        ]);
       allow delete: if isAdminOrDev();
 
       match /messages/{mid} {
         function convoParticipants() {
           return get(/databases/$(database)/documents/conversations/$(cid)).data.participantIds;
         }
-        allow read: if isAuth() && request.auth.uid in convoParticipants();
-        allow create: if isAuth()
+        allow read: if isActiveStaff() && request.auth.uid in convoParticipants();
+        allow create: if isActiveStaff()
           && request.auth.uid in convoParticipants()
           && request.resource.data.senderId == request.auth.uid
           && request.resource.data.keys().hasAll(['senderId', 'ciphertext', 'iv', 'createdAt']);
-        allow update: if isAuth()
-          && request.auth.uid == resource.data.senderId
-          && request.resource.data.senderId == resource.data.senderId;
+        allow update: if false;
         allow delete: if isAdminOrDev();
       }
     }
@@ -191,42 +203,78 @@ service cloud.firestore {
       function canManageSchedule() {
         return isOffice() || isAdminOrDev();
       }
+      function validScheduleBlock(data) {
+        return data.keys().hasAll([
+            'title', 'type', 'color', 'startAt', 'endAt', 'allDay', 'notes',
+            'employeeIds', 'employeeNames', 'targetAll', 'createdBy',
+            'createdByName', 'createdAt', 'updatedAt'
+          ])
+          && data.keys().hasOnly([
+            'title', 'type', 'color', 'startAt', 'endAt', 'allDay', 'notes',
+            'employeeIds', 'employeeNames', 'targetAll', 'createdBy',
+            'createdByName', 'createdAt', 'updatedAt'
+          ])
+          && data.title is string
+          && data.title.size() >= 1
+          && data.title.size() <= 80
+          && data.type in ['meeting', 'lunch', 'time_off', 'training', 'shop', 'other']
+          && data.color is string
+          && data.color.matches('^#[0-9a-fA-F]{6}$')
+          && data.startAt is string
+          && data.startAt.size() <= 40
+          && data.endAt is string
+          && data.endAt.size() <= 40
+          && data.startAt < data.endAt
+          && data.allDay is bool
+          && data.notes is string
+          && data.notes.size() <= 1000
+          && data.employeeIds is list
+          && data.employeeIds.size() >= 1
+          && data.employeeIds.size() <= 100
+          && data.employeeNames is map
+          && data.employeeNames.size() <= 100
+          && data.targetAll is bool
+          && data.createdBy is string
+          && data.createdBy.size() >= 1
+          && data.createdBy.size() <= 128
+          && data.createdByName is string
+          && data.createdByName.size() <= 100
+          && data.createdAt is string
+          && data.createdAt.size() <= 40
+          && data.updatedAt is string
+          && data.updatedAt.size() <= 40;
+      }
       function creatingSelfOnly() {
-        return isAuth()
+        return isActiveStaff()
+          && validScheduleBlock(request.resource.data)
           && request.resource.data.createdBy == request.auth.uid
-          && request.resource.data.employeeIds is list
           && request.resource.data.employeeIds.size() == 1
           && request.auth.uid in request.resource.data.employeeIds
-          && request.resource.data.get('targetAll', false) != true
-          && request.resource.data.keys().hasAll([
-            'title', 'type', 'startAt', 'endAt', 'employeeIds', 'createdBy', 'createdAt'
-          ]);
+          && request.resource.data.targetAll == false;
       }
       function creatingManaged() {
         return canManageSchedule()
-          && request.resource.data.createdBy == request.auth.uid
-          && request.resource.data.employeeIds is list
-          && request.resource.data.employeeIds.size() >= 1
-          && request.resource.data.keys().hasAll([
-            'title', 'type', 'startAt', 'endAt', 'employeeIds', 'createdBy', 'createdAt'
-          ]);
+          && validScheduleBlock(request.resource.data)
+          && request.resource.data.createdBy == request.auth.uid;
       }
 
       // Managers: all blocks. Staff: assigned blocks + company-wide (targetAll) pushes.
       allow read: if canManageSchedule()
-        || (isAuth() && request.auth.uid in resource.data.employeeIds)
-        || (isAuth() && resource.data.get('targetAll', false) == true && isTech());
+        || (isActiveStaff() && request.auth.uid in resource.data.employeeIds)
+        || (isActiveStaff() && resource.data.get('targetAll', false) == true && isTech());
       allow create: if creatingManaged() || creatingSelfOnly();
-      allow update: if canManageSchedule()
-        || (isAuth()
+      allow update: if validScheduleBlock(request.resource.data)
+        && request.resource.data.createdBy == resource.data.createdBy
+        && request.resource.data.createdAt == resource.data.createdAt
+        && (canManageSchedule()
+        || (isActiveStaff()
           && resource.data.createdBy == request.auth.uid
           && request.auth.uid in resource.data.employeeIds
-          && request.resource.data.createdBy == resource.data.createdBy
-          && request.resource.data.get('targetAll', false) != true
-          && request.resource.data.employeeIds.size() == 1
-          && request.auth.uid in request.resource.data.employeeIds);
+          && request.resource.data.targetAll == false
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['title', 'type', 'color', 'startAt', 'endAt', 'allDay', 'notes', 'updatedAt'])));
       allow delete: if canManageSchedule()
-        || (isAuth()
+        || (isActiveStaff()
           && resource.data.createdBy == request.auth.uid
           && request.auth.uid in resource.data.employeeIds);
     }

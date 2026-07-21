@@ -1,14 +1,6 @@
 /* Alex Road Service — Business Logic & CRUD */
 window.ARS = window.ARS || {};
 
-const LEGACY_CUSTOMER_ID = /^C00[1-8]$/;
-const LEGACY_TRUCK_ID = /^T0(0[1-9]|10)$/;
-const LEGACY_NAMES = ['washex', 'james construction'];
-const OPERATIONAL_COLLECTIONS = [
-  'customers', 'trucks', 'workOrders', 'estimates', 'invoices',
-  'payments', 'inventory', 'inventoryTransactions',
-];
-
 const DEFAULT_ONBOARDING_STEPS = [
   { id: 'account', label: 'Platform account created' },
   { id: 'i9', label: 'I-9 employment eligibility' },
@@ -22,49 +14,6 @@ const DEFAULT_ONBOARDING_STEPS = [
 
 ARS.Data = {
   _techs: [],
-
-  needsLegacyPurge(state = ARS.Store.load()) {
-    if (ARS.isDemoMode?.() || state.isDemoDataset) return false;
-    if (state.demoPurged) return false;
-    const customers = state.customers || [];
-    if (customers.some((c) => LEGACY_CUSTOMER_ID.test(c.id))) return true;
-    if ((state.trucks || []).some((t) => LEGACY_TRUCK_ID.test(t.id))) return true;
-    return customers.some((c) => {
-      const text = `${c.name || ''} ${c.company || ''}`.toLowerCase();
-      return LEGACY_NAMES.some((n) => text.includes(n));
-    });
-  },
-
-  clearLocalOperationalData() {
-    if (ARS.isDemoMode?.()) return;
-    const s = ARS.Store.load();
-    OPERATIONAL_COLLECTIONS.forEach((name) => { s[name] = []; });
-    s.counters = { wo: 0, est: 0, inv: 0, pay: 0, cust: 0, truck: 0, part: 0 };
-    s.seeded = false;
-    s.demoPurged = true;
-    ARS.Store.save(s);
-  },
-
-  async purgeLegacyDemoData() {
-    if (ARS.isDemoMode?.()) return false;
-    const s = ARS.Store.load();
-    if (s.demoPurged) return false;
-    const needsPurge = this.needsLegacyPurge(s);
-    if (!needsPurge) {
-      s.demoPurged = true;
-      ARS.Store.save(s, { silent: true });
-      return false;
-    }
-    if (ARS.FirestoreSync?.purgeLegacyDemoData) {
-      try {
-        await ARS.FirestoreSync.purgeLegacyDemoData();
-      } catch (e) {
-        console.warn('Cloud legacy purge failed:', e.message);
-      }
-    }
-    this.clearLocalOperationalData();
-    return true;
-  },
 
   async init() {
     if (ARS.isDemoMode?.()) {
@@ -93,12 +42,19 @@ ARS.Data = {
     if (ARS.FirestoreSync?.isActive?.()) {
       return ARS.FirestoreSync.nextSequentialId(prefix);
     }
+    if (!ARS.isDemoMode?.()) {
+      throw new Error('Cloud data service is unavailable. Reconnect before creating records.');
+    }
     const { year, num } = ARS.Store.bumpCounter(localKey || prefix.toLowerCase());
     return ARS.nextId(prefix, year, num);
   },
 
   async _persist(collection, item) {
-    if (!item?.id || !ARS.FirestoreSync?.isActive?.()) return item;
+    if (!item?.id) throw new Error('Cannot save a record without an ID.');
+    if (ARS.isDemoMode?.()) return item;
+    if (!ARS.FirestoreSync?.isActive?.()) {
+      throw new Error('Cloud data service is unavailable. Your change was not saved.');
+    }
     await ARS.FirestoreSync.pushItem(collection, item);
     return item;
   },
@@ -149,6 +105,7 @@ ARS.Data = {
     s.contactSubmissions[i] = {
       ...s.contactSubmissions[i],
       ...patch,
+      version: Number(s.contactSubmissions[i].version || 1) + 1,
       updatedAt: new Date().toISOString(),
     };
     ARS.Store.save(s);
@@ -455,6 +412,15 @@ ARS.Data = {
     if (i < 0) throw new Error('Work order not found');
     const cur = s.workOrders[i];
     if (patch.version && patch.version !== cur.version) throw new Error('Conflict: record was modified by another user');
+    if (!ARS.isDemoMode?.()
+      && patch.status === 'Completed'
+      && !['Completed', 'Invoiced'].includes(cur.status)) {
+      const result = await ARS.FirestoreSync.completeWorkOrder(id, cur.version || 1);
+      s.workOrders[i] = result.workOrder;
+      ARS.Store.save(s);
+      this.refreshNotifications();
+      return result.workOrder;
+    }
     if (patch.status === 'Invoiced' && !cur.invoiced && !patch.invoiced) {
       throw new Error('Use Generate Invoice to mark a work order as invoiced');
     }
@@ -477,7 +443,11 @@ ARS.Data = {
       updatedAt: new Date().toISOString(),
     };
     ARS.Store.save(s);
-    if (patch.status === 'Completed') this.deductInventoryForWO(s.workOrders[i]);
+    if (ARS.isDemoMode?.()
+      && patch.status === 'Completed'
+      && !['Completed', 'Invoiced'].includes(cur.status)) {
+      this.deductInventoryForWO(s.workOrders[i]);
+    }
     await this._persist('workOrders', s.workOrders[i]);
     this.refreshNotifications();
     return s.workOrders[i];
@@ -508,6 +478,25 @@ ARS.Data = {
     const wo = this.getWorkOrder(woId);
     if (!wo) throw new Error('Work order not found');
     if (wo.invoiced) throw new Error('Already invoiced');
+    if (!ARS.isDemoMode?.()) {
+      const invoice = await ARS.FirestoreSync.createInvoiceFromWorkOrder(woId);
+      const s = ARS.Store.load();
+      s.invoices = [invoice, ...(s.invoices || []).filter((item) => item.id !== invoice.id)];
+      const wi = s.workOrders.findIndex((w) => w.id === woId);
+      if (wi >= 0) {
+        s.workOrders[wi] = {
+          ...s.workOrders[wi],
+          invoiced: true,
+          invoiceId: invoice.id,
+          status: 'Invoiced',
+          version: Number(s.workOrders[wi].version || 1) + 1,
+          updatedAt: new Date().toISOString(),
+        };
+      }
+      ARS.Store.save(s);
+      this.refreshNotifications();
+      return invoice;
+    }
     const settings = ARS.Store.getSettings();
     const id = await this._nextId('INV', 'inv');
     const due = new Date();
@@ -674,6 +663,7 @@ ARS.Data = {
     if (i < 0) throw new Error('Invoice not found');
     s.invoices[i].status = 'Written Off';
     s.invoices[i].writeOffReason = reason;
+    s.invoices[i].version = Number(s.invoices[i].version || 1) + 1;
     s.invoices[i].updatedAt = new Date().toISOString();
     ARS.Store.save(s);
     this._audit({ action: 'invoice.writeOff', entityId: id, entityType: 'invoice', reason });
@@ -1008,8 +998,8 @@ ARS.Data = {
     if (filters.q) {
       const q = filters.q.toLowerCase();
       items = items.filter((p) =>
-        p.partNo.toLowerCase().includes(q) ||
-        p.desc.toLowerCase().includes(q)
+        String(p.partNo || '').toLowerCase().includes(q) ||
+        String(p.desc || '').toLowerCase().includes(q)
       );
     }
     return items.map((p) => ({
@@ -1062,6 +1052,16 @@ ARS.Data = {
   },
 
   async adjustStock(partId, delta, reason) {
+    if (!ARS.isDemoMode?.()) {
+      const result = await ARS.FirestoreSync.adjustInventory(partId, delta, reason);
+      const s = ARS.Store.load();
+      const index = s.inventory.findIndex((part) => part.id === partId);
+      if (index >= 0) s.inventory[index] = result.part;
+      else s.inventory.push(result.part);
+      ARS.Store.save(s);
+      this.refreshNotifications();
+      return result.part;
+    }
     const s = ARS.Store.load();
     const i = s.inventory.findIndex((p) => p.id === partId);
     if (i < 0) throw new Error('Part not found');
@@ -1233,12 +1233,16 @@ ARS.Data = {
 
   /* ─── SETTINGS ─── */
   async saveShopSettings(patch) {
+    if (!ARS.isDemoMode?.()) {
+      if (!ARS.FirestoreSync?.isActive?.()) {
+        throw new Error('Cloud settings service is unavailable.');
+      }
+      const saved = await ARS.FirestoreSync.saveShopSettings(patch);
+      ARS.Store.setSettings(saved);
+      return ARS.Store.getSettings();
+    }
     ARS.Store.setSettings(patch);
     const s = ARS.Store.getSettings();
-    if (ARS.FirestoreSync?.isActive?.() && ARS.FirestoreSync._db && ARS.FirestoreSync._mods) {
-      const { doc, setDoc } = ARS.FirestoreSync._mods;
-      await setDoc(doc(ARS.FirestoreSync._db, 'settings', 'shop'), s, { merge: true });
-    }
     this._audit({ action: 'settings.update', entityType: 'settings' });
     return s;
   },
@@ -1259,6 +1263,10 @@ ARS.Data = {
 
   enrichEmployee(e) {
     const onboarding = (e.onboarding && e.onboarding.length) ? e.onboarding : this.defaultOnboarding();
+    const defaultSchedule = {
+      mon: '7:00 AM – 3:30 PM', tue: '7:00 AM – 3:30 PM', wed: '7:00 AM – 3:30 PM',
+      thu: '7:00 AM – 3:30 PM', fri: '7:00 AM – 3:30 PM', sat: 'Off', sun: 'Off', notes: '',
+    };
     const total = onboarding.length;
     const done = onboarding.filter((o) => o.done).length;
     return {
@@ -1272,6 +1280,7 @@ ARS.Data = {
       emergencyContact: e.emergencyContact || { name: '', phone: '' },
       certifications: e.certifications || [],
       media: e.media || [],
+      schedule: e.schedule || defaultSchedule,
     };
   },
 
@@ -1326,6 +1335,10 @@ ARS.Data = {
       address: '',
       certifications: [],
       media: [],
+      schedule: {
+        mon: '7:00 AM – 3:30 PM', tue: '7:00 AM – 3:30 PM', wed: '7:00 AM – 3:30 PM',
+        thu: '7:00 AM – 3:30 PM', fri: '7:00 AM – 3:30 PM', sat: 'Off', sun: 'Off', notes: '',
+      },
       createdAt: now,
       updatedAt: now,
     };
@@ -1408,7 +1421,6 @@ ARS.Data = {
   _createDemoEmployee(payload) {
     const s = ARS.Store.load();
     const uid = `demo_emp_${ARS.uid().replace(/^id_/, '')}`;
-    const defaultPassword = 'AlexRoadHire!';
     const now = new Date().toISOString();
     const employee = {
       uid,
@@ -1440,7 +1452,7 @@ ARS.Data = {
     s.employees = [...(s.employees || []), employee];
     ARS.Store.save(s);
     this._audit({ action: 'employee.create', entityId: uid, entityType: 'employee' });
-    return { ok: true, uid, email: employee.email, defaultPassword, role: employee.role, passwordResetSent: true };
+    return { ok: true, uid, email: employee.email, role: employee.role, passwordResetSent: true };
   },
 
   _updateDemoEmployee(uid, patch) {

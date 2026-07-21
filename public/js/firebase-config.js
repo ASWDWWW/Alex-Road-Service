@@ -7,6 +7,7 @@ const FIREBASE_CONFIG = {
   messagingSenderId: "350488747448",
   appId:             "1:350488747448:web:e5e7d9f48a62627058c34d",
   measurementId:     "G-743F7YVS18",
+  appCheckSiteKey:   "6LeQM14tAAAAAC0ZPwX6wHbCvOvBkgi60SMFb0OB",
 };
 
 const FB_VERSION = '10.7.1';
@@ -37,19 +38,31 @@ async function initFirebase() {
   if (!isFirebaseConfigured()) return null;
   try {
     const ops = isOpsAppPath();
-    const [{ initializeApp }, firestoreMod, { getAuth }, storageMod] = await Promise.all([
+    const [{ initializeApp }, firestoreMod, { getAuth }, storageMod, functionsMod] = await Promise.all([
       import(`https://www.gstatic.com/firebasejs/${FB_VERSION}/firebase-app.js`),
       import(`https://www.gstatic.com/firebasejs/${FB_VERSION}/firebase-firestore.js`),
       import(`https://www.gstatic.com/firebasejs/${FB_VERSION}/firebase-auth.js`),
       import(`https://www.gstatic.com/firebasejs/${FB_VERSION}/firebase-storage.js`),
+      import(`https://www.gstatic.com/firebasejs/${FB_VERSION}/firebase-functions.js`),
     ]);
 
     const { getFirestore, collection, addDoc, doc, getDoc } = firestoreMod;
     const { getStorage } = storageMod;
     const app = initializeApp(FIREBASE_CONFIG);
+    let appCheck = null;
+    if (FIREBASE_CONFIG.appCheckSiteKey) {
+      const { initializeAppCheck, ReCaptchaEnterpriseProvider } = await import(
+        `https://www.gstatic.com/firebasejs/${FB_VERSION}/firebase-app-check.js`
+      );
+      appCheck = initializeAppCheck(app, {
+        provider: new ReCaptchaEnterpriseProvider(FIREBASE_CONFIG.appCheckSiteKey),
+        isTokenAutoRefreshEnabled: true,
+      });
+    }
     const db = getFirestore(app);
     const auth = getAuth(app);
     const storage = getStorage(app);
+    const functions = functionsMod.getFunctions(app, 'us-central1');
 
     let analytics = null;
     // Skip Analytics on ops pages — saves a network round-trip on every navigation
@@ -65,8 +78,13 @@ async function initFirebase() {
 
     window.ARSFirebase = {
       configured: true,
-      app, db, auth, storage, analytics,
-      _mods: { firestore: firestoreMod, storage: storageMod },
+      app, appCheck, db, auth, storage, functions, analytics,
+      _mods: {
+        firestore: firestoreMod,
+        storage: storageMod,
+        getFunctions: functionsMod.getFunctions,
+        httpsCallable: functionsMod.httpsCallable,
+      },
       async getUserProfile(uid) {
         const snap = await getDoc(doc(db, 'users', uid));
         return snap.exists() ? snap.data() : null;
@@ -94,31 +112,15 @@ window.submitContactForm = async (formData) => {
   const media = Array.isArray(formData.media) ? formData.media : [];
   const payload = { ...formData };
   delete payload.media;
-  if (window.ARSFirebase?.configured && window.ARSFirebase.db) {
-    const { collection, addDoc } = await import(`https://www.gstatic.com/firebasejs/${FB_VERSION}/firebase-firestore.js`);
-    const ref = await addDoc(collection(window.ARSFirebase.db, 'contact_submissions'), {
-      ...payload,
-      media,
-      status: 'New',
-      createdAt: new Date().toISOString(),
-    });
-    return ref;
+  if (window.ARSFirebase?.configured && window.ARSFirebase.functions) {
+    const submitContact = window.ARSFirebase._mods.httpsCallable(
+      window.ARSFirebase.functions,
+      'submitContact',
+    );
+    const result = await submitContact({ ...payload, media });
+    return result.data;
   }
-  if (window.ARS?.Store) {
-    const s = window.ARS.Store.load();
-    s.contactSubmissions = s.contactSubmissions || [];
-    s.contactSubmissions.unshift({
-      id: 'sub_' + Date.now(),
-      ...payload,
-      media,
-      status: 'New',
-      createdAt: new Date().toISOString(),
-    });
-    window.ARS.Store.save(s);
-    return { id: 'local' };
-  }
-  await new Promise((r) => setTimeout(r, 400));
-  return { id: 'local' };
+  throw new Error('Online request service is unavailable. Please call the shop directly.');
 };
 
 initFirebase();

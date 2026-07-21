@@ -14,11 +14,11 @@ const LISTEN_COLLECTIONS = [
   { firestore: 'contact_submissions', store: 'contactSubmissions' },
 ];
 
-/** First paint waits only on these; the rest sync in the background */
+/** Default first-paint data for cross-functional pages such as Dashboard. */
 const CRITICAL_LISTEN = new Set(['customers', 'trucks', 'workOrders', 'invoices']);
 
 /** Roles that may see the employee directory — matches employees.view permission */
-const EMPLOYEE_DIRECTORY_ROLES = ['admin', 'office', 'developer'];
+const EMPLOYEE_DIRECTORY_ROLES = ['admin', 'developer'];
 
 const HYDRATE_TIMEOUT_MS = 8000;
 const PENDING_LOCAL_MS = 120000;
@@ -27,11 +27,16 @@ const ARS_SYNC_FB_VERSION = '10.7.1';
 const ARS_SYNC_FB_FIRESTORE = `https://www.gstatic.com/firebasejs/${ARS_SYNC_FB_VERSION}/firebase-firestore.js`;
 const ARS_SYNC_FB_FUNCTIONS = `https://www.gstatic.com/firebasejs/${ARS_SYNC_FB_VERSION}/firebase-functions.js`;
 
+function isCriticalForCurrentPage(collectionName) {
+  if (location.pathname.endsWith('/inventory.html')) return collectionName === 'inventory';
+  return CRITICAL_LISTEN.has(collectionName);
+}
+
 ARS.FirestoreSync = {
   _db: null,
   _fns: null,
   _unsubs: [],
-  _pushTimer: null,
+  _collectionErrors: {},
   _dataChangedTimer: null,
   _ready: false,
   _hydrated: false,
@@ -48,6 +53,10 @@ ARS.FirestoreSync = {
 
   isFullySynced() {
     return this._fullySynced;
+  },
+
+  getCollectionError(collectionName) {
+    return this._collectionErrors[collectionName] || null;
   },
 
   async _loadModules() {
@@ -89,18 +98,23 @@ ARS.FirestoreSync = {
       this._fns = getFunctions(window.ARSFirebase.app, 'us-central1');
       this._callable = (name) => httpsCallable(this._fns, name);
 
-      // Settings + purge before listeners so we never race-clear after remote apply
+      // Load settings before listeners to avoid painting stale configuration.
       await this._prepLocalStore();
 
       const critical = [];
       const secondary = [];
+      const role = ARS.Auth?.getRole?.();
+      const technicianCollections = new Set(['customers', 'trucks', 'workOrders', 'inventory']);
       LISTEN_COLLECTIONS.forEach((c) => {
+        if (role === 'technician' && !technicianCollections.has(c.firestore)) return;
         const p = this._listenCollection(c.firestore, c.store);
-        if (CRITICAL_LISTEN.has(c.firestore)) critical.push(p);
+        if (isCriticalForCurrentPage(c.firestore)) critical.push(p);
         else secondary.push(p);
       });
       if (EMPLOYEE_DIRECTORY_ROLES.includes(ARS.Auth?.getRole?.())) {
         secondary.push(this._listenCollection('users', 'employees'));
+      } else if (ARS.Auth?.getRole?.() === 'office') {
+        secondary.push(this._listenCollection('messagingRoster', 'employees'));
       }
 
       await Promise.race([
@@ -109,7 +123,6 @@ ARS.FirestoreSync = {
       ]);
 
       this._startNotificationListener();
-      ARS.Store.subscribe(() => this._schedulePush());
 
       this._hydrated = true;
       this._ready = true;
@@ -135,27 +148,7 @@ ARS.FirestoreSync = {
   },
 
   async _prepLocalStore() {
-    const settingsP = this._pullSettings().catch((e) => console.warn('Settings pull failed:', e));
-    const store = ARS.Store.load();
-    if (store.demoPurged || store.demoPurgeSkipped) {
-      await settingsP;
-      return;
-    }
-    const needsLocalPurge = ARS.Data?.needsLegacyPurge?.(store);
-    const result = await this.purgeLegacyDemoData();
-    if (result.purged || needsLocalPurge) {
-      ARS.Data?.clearLocalOperationalData?.();
-    } else if (result.skipped) {
-      const s = ARS.Store.load();
-      s.demoPurgeSkipped = true;
-      if (!needsLocalPurge) s.demoPurged = true;
-      ARS.Store.save(s, { silent: true });
-    } else {
-      const s = ARS.Store.load();
-      s.demoPurged = true;
-      ARS.Store.save(s, { silent: true });
-    }
-    await settingsP;
+    await this._pullSettings().catch((e) => console.warn('Settings pull failed:', e));
   },
 
   async _pullSettings() {
@@ -169,7 +162,11 @@ ARS.FirestoreSync = {
   },
 
   _listenCollection(firestoreName, storeName) {
-    const { collection, onSnapshot } = this._mods;
+    const { collection, onSnapshot, query, where } = this._mods;
+    const base = collection(this._db, firestoreName);
+    const source = firestoreName === 'workOrders' && ARS.Auth?.getRole?.() === 'technician'
+      ? query(base, where('techIds', 'array-contains', ARS.Auth.getUser().uid))
+      : base;
     return new Promise((resolve) => {
       let settled = false;
       const finish = () => {
@@ -178,14 +175,17 @@ ARS.FirestoreSync = {
         resolve();
       };
       const unsub = onSnapshot(
-        collection(this._db, firestoreName),
+        source,
         (snap) => {
-          const items = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+          delete this._collectionErrors[firestoreName];
+          const items = snap.docs.map((d) => ({ ...d.data(), id: d.id }));
           this._applyRemoteCollection(storeName, items, { silent: !this._hydrated });
           finish();
         },
         (err) => {
           console.warn(`Listener error (${firestoreName}):`, err);
+          this._collectionErrors[firestoreName] = err;
+          if (this._hydrated) this._scheduleDataChanged();
           finish();
         },
       );
@@ -200,7 +200,7 @@ ARS.FirestoreSync = {
     const q = query(collection(this._db, 'notifications'), where('userId', '==', uid));
     const unsub = onSnapshot(q, (snap) => {
       const items = snap.docs
-        .map((d) => ({ id: d.id, ...d.data() }))
+        .map((d) => ({ ...d.data(), id: d.id }))
         .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
       this._applyRemoteCollection('notifications', items, { silent: true });
       ARS.Data?.refreshNotifications?.();
@@ -244,6 +244,7 @@ ARS.FirestoreSync = {
     const local = s[name] || [];
     const remote = items.map((i) => this._normalizeItem(i));
     const remoteIds = new Set(remote.map((i) => i.id).filter(Boolean));
+    const localById = new Map(local.map((item) => [item.id, item]));
 
     // Keep client-derived operational alerts; merge only server-pushed notifications.
     if (name === 'notifications') {
@@ -268,7 +269,7 @@ ARS.FirestoreSync = {
     const preferRemote = ['payments', 'inventoryTransactions', 'contactSubmissions', 'employees'].includes(name);
 
     const merged = remote.map((rem) => {
-      const loc = local.find((l) => l.id === rem.id);
+      const loc = localById.get(rem.id);
       if (!loc || preferRemote) return rem;
       const lv = loc.version || 0;
       const rv = rem.version || 0;
@@ -298,53 +299,45 @@ ARS.FirestoreSync = {
     document.dispatchEvent(new CustomEvent('ars:data-changed'));
   },
 
-  _schedulePush() {
-    if (!this._db || this._applyingRemote) return;
-    clearTimeout(this._pushTimer);
-    this._pushTimer = setTimeout(() => this._pushAll(), 800);
-  },
-
-  async _pushAll() {
-    if (!this._db || this._applyingRemote) return;
-    const { doc, setDoc } = this._mods;
-    const s = ARS.Store.load();
-    for (const name of WRITABLE_COLLECTIONS) {
-      for (const item of s[name] || []) {
-        if (!item.id) continue;
-        try {
-          await setDoc(doc(this._db, name, item.id), item, { merge: true });
-        } catch (e) {
-          console.warn(`Push failed (${name}/${item.id}):`, e.message);
-        }
-      }
-    }
-  },
-
   async pushItem(collectionName, item) {
-    if (!this._db || !item?.id) return;
-    const { doc, setDoc } = this._mods;
+    if (!this._callable || !item?.id) throw new Error('Cloud save service is unavailable');
     try {
-      await setDoc(doc(this._db, collectionName, item.id), item, { merge: true });
+      const result = await this._callable('saveEntity')({ collectionName, item });
+      return result.data;
     } catch (e) {
       console.warn(`Push failed (${collectionName}/${item.id}):`, e.message);
+      await this._restoreRemoteItem(collectionName, item.id).catch((restoreError) => {
+        console.warn(`Rollback failed (${collectionName}/${item.id}):`, restoreError.message);
+      });
       throw e;
     }
   },
 
-  async nextSequentialId(prefix) {
-    if (!this._callable) {
-      const { num, year } = ARS.Store.bumpCounter(prefix.toLowerCase().replace(/[^a-z]/g, '') || 'id');
-      return ARS.nextId(prefix, year, num);
+  async _restoreRemoteItem(collectionName, id) {
+    const { doc, getDoc } = this._mods;
+    const snapshot = await getDoc(doc(this._db, collectionName, id));
+    const state = ARS.Store.load();
+    const items = state[collectionName];
+    if (!Array.isArray(items)) return;
+    const index = items.findIndex((entry) => entry.id === id);
+    if (snapshot.exists()) {
+      const remote = { id: snapshot.id, ...snapshot.data() };
+      if (index >= 0) items[index] = remote;
+      else items.push(remote);
+    } else if (index >= 0) {
+      items.splice(index, 1);
     }
+    ARS.Store.save(state);
+  },
+
+  async nextSequentialId(prefix) {
+    if (!this._callable) throw new Error('Cloud ID service is unavailable. Reconnect before creating records.');
     try {
       const year = new Date().getFullYear();
       const res = await this._callable('nextSequentialId')({ prefix, year });
       return res.data?.id || res.data;
     } catch (e) {
-      console.warn('nextSequentialId failed, using local counter:', e.message);
-      const key = prefix.toLowerCase().replace(/[^a-z]/g, '') || 'id';
-      const { num, year } = ARS.Store.bumpCounter(key);
-      return ARS.nextId(prefix, year, num);
+      throw new Error(`Could not reserve a record number: ${e.message || 'service unavailable'}`);
     }
   },
 
@@ -352,7 +345,7 @@ ARS.FirestoreSync = {
     if (!this._db) return [];
     const { collection, query, where, getDocs } = this._mods;
     try {
-      const snap = await getDocs(query(collection(this._db, 'users'), where('role', '==', 'technician')));
+      const snap = await getDocs(query(collection(this._db, 'messagingRoster'), where('role', '==', 'technician')));
       return snap.docs
         .map((d) => ({ uid: d.id, ...d.data() }))
         .filter((u) => u.active !== false && u.status !== 'Archived' && u.status !== 'Terminated')
@@ -388,6 +381,30 @@ ARS.FirestoreSync = {
     } catch (e) {
       console.warn('auditLog cloud call failed:', e.message);
     }
+  },
+
+  async completeWorkOrder(workOrderId, expectedVersion) {
+    if (!this._callable) throw new Error('Cloud functions unavailable');
+    const res = await this._callable('completeWorkOrder')({ workOrderId, expectedVersion });
+    return res.data;
+  },
+
+  async adjustInventory(partId, delta, reason) {
+    if (!this._callable) throw new Error('Cloud functions unavailable');
+    const res = await this._callable('adjustInventory')({ partId, delta, reason });
+    return res.data;
+  },
+
+  async createInvoiceFromWorkOrder(workOrderId) {
+    if (!this._callable) throw new Error('Cloud functions unavailable');
+    const res = await this._callable('createInvoiceFromWorkOrder')({ workOrderId });
+    return res.data;
+  },
+
+  async saveShopSettings(patch) {
+    if (!this._callable) throw new Error('Cloud functions unavailable');
+    const res = await this._callable('saveShopSettings')({ patch });
+    return res.data;
   },
 
   async createEmployee(payload) {
@@ -438,25 +455,10 @@ ARS.FirestoreSync = {
     return res.data?.items || [];
   },
 
-  async purgeLegacyDemoData() {
-    if (!this._callable || !ARS.Auth?.getUser?.()) return { purged: false, skipped: true };
-    try {
-      const user = ARS.Auth.getUser();
-      if (user?.getIdToken) await user.getIdToken(true);
-      const res = await this._callable('purgeLegacyDemoData')({});
-      return res.data || { purged: false };
-    } catch (e) {
-      const code = e?.code || '';
-      if (code !== 'functions/not-found') {
-        console.warn('purgeLegacyDemoData unavailable:', code || e.message);
-      }
-      return { purged: false, skipped: true };
-    }
-  },
-
   destroy() {
     this._unsubs.forEach((fn) => { try { fn(); } catch (_) {} });
     this._unsubs = [];
+    this._collectionErrors = {};
     this._ready = false;
     this._hydrated = false;
     this._fullySynced = false;

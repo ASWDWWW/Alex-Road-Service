@@ -9,7 +9,7 @@ Project: **launchpage-alex-roadservice**
 - Firebase config in `public/js/firebase-config.js`
 - Google Analytics (`G-743F7YVS18`) via gtag + Firebase Analytics
 - Firestore security rules (`firestore.rules`) with **developer** role
-- Cloud Functions: `bootstrapStaff`, `setUserRole`, `nextSequentialId`, `markOverdueInvoices`, `auditLog`, `createStripeCheckout`, `stripeWebhook`
+- Cloud Functions: `setUserRole`, employee administration, sequential IDs, scheduled maintenance, audit export, Stripe checkout/refunds, and Stripe webhooks
 - Firebase Authentication only (mock login removed; sessions re-validated on every page load)
 - Hosting site: `launchpage-alex-roadservice`
 
@@ -28,10 +28,20 @@ Project: **launchpage-alex-roadservice**
 
 ### 3. Upgrade to Blaze (for Cloud Functions)
 - **Project settings → Usage and billing → Upgrade**
-- Required for `bootstrapStaff` and scheduled jobs
+- Required for Cloud Functions and scheduled jobs
 
 ### 4. Analytics
 - **Build → Analytics** — should show **G-743F7YVS18** (already linked to web app)
+
+### 5. App Check
+
+1. Create a score-based reCAPTCHA Enterprise website key for:
+   - `alexroadservice.com`
+   - `www.alexroadservice.com`
+   - `launchpage-alex-roadservice.web.app`
+2. Register the production web app in Firebase **App Check** with that key.
+3. Set `FIREBASE_CONFIG.appCheckSiteKey` in `public/js/firebase-config.js`.
+4. Deploy and verify App Check metrics before enabling enforcement for Firestore, Storage, Authentication, and callable Functions.
 
 ---
 
@@ -50,57 +60,30 @@ Or step by step:
 ```bash
 firebase deploy --only hosting:launchpage-alex-roadservice
 firebase deploy --only firestore:rules
+firebase deploy --only storage
 firebase deploy --only functions
 ```
 
 ---
 
-## Bootstrap staff (creates users + roles + profiles)
+## Initial administrator
 
-After **functions** are deployed, run **once** from Firebase Console or locally:
+There is no public bootstrap endpoint and no shared staff password.
 
-### Option A — Firebase Console (no code)
+1. Create the first administrator in Firebase Authentication with a unique strong password.
+2. Authenticate Application Default Credentials on a trusted administrator workstation.
+3. From `functions/`, run:
 
-Not available for custom claims — use Option B or C.
-
-### Option B — Callable from browser (after first manual dev user)
-
-1. In **Authentication → Users → Add user**:
-   - `developer@alexroadservice.com` + strong password
-2. In **Firestore**, collection `users`, doc ID = that user's **UID**:
-
-```json
-{
-  "email": "developer@alexroadservice.com",
-  "name": "Platform Developer",
-  "role": "developer",
-  "active": true
-}
+```bash
+npm run provision:initial-admin -- --project launchpage-alex-roadservice --confirm-project launchpage-alex-roadservice --email <existing-auth-email>
 ```
 
-3. Use Firebase Admin locally OR call `bootstrapStaff` with secret (see Option C).
+The command refuses to run without an exact project confirmation and only provisions an existing Firebase Authentication user.
 
-### Option C — bootstrapStaff function (recommended)
+4. Sign out and back in so the custom claim refreshes.
+5. Create subsequent employees from the Employees screen. Each employee receives a password-setup email; no password is shown to staff.
 
-After deploy, open **/setup.html** on your live site OR use Settings (admin/dev):
-
-**First call** (no auth required if not bootstrapped yet):
-
-Secret default: `alex-road-bootstrap-2026`
-
-Creates these users:
-
-| Email | Role | Password |
-|-------|------|----------|
-| admin@alexroadservice.com | admin | password |
-| office@alexroadservice.com | office | password |
-| tech@alexroadservice.com | technician | password |
-| developer@alexroadservice.com | developer | ChangeMe-Dev-2026! |
-| demo@alexroadservice.com | demo | Demo2026! |
-
-The **demo** account is client-side only (no Firebase user created). It loads isolated sample data and simulates payments. See [`Development Docs/STAFF_CREDENTIALS.md`](../Development%20Docs/STAFF_CREDENTIALS.md).
-
-**Change all passwords** in Firebase Console → Authentication before going to production. (Demo password is intentional for public sandbox use.)
+The public **demo** account remains client-side only. It cannot access Firebase or Stripe.
 
 ---
 

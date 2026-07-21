@@ -185,13 +185,13 @@
   </div>
 </div>
 
-<script src="/app/js/utils.js?v=20260720w"></script>
+<script src="/app/js/utils.js?v=20260721d"></script>
 <script src="/app/js/demo-mode.js?v=20260720w"></script>
 <script src="/app/js/data-store.js?v=20260720w"></script>
 <script src="/app/js/auth.js?v=20260720w"></script>
-<script src="/app/js/data-service.js?v=20260720w"></script>
+<script src="/app/js/data-service.js?v=20260721d"></script>
 <script src="/app/js/page-scripts.js?v=20260720w"></script>
-<script src="/app/js/app-components.js?v=20260720w"></script>
+<script src="/app/js/app-components.js?v=20260721d"></script>
 <script>
   let activeFilter = 'all', searchVal = '', catVal = '', urlState = {};
 
@@ -204,10 +204,14 @@
     return status === normalized;
   }
 
-  function getFilteredInventory() {
-    const filters = { q: searchVal };
-    if (catVal) filters.cat = catVal;
-    return ARS.Data.listInventory(filters).filter((p) => inventoryStatusFilter(p.status));
+  function getFilteredInventory(all) {
+    const q = searchVal.toLowerCase();
+    return all.filter((p) => {
+      if (catVal && p.cat !== catVal) return false;
+      if (q && !String(p.partNo || '').toLowerCase().includes(q)
+        && !String(p.desc || '').toLowerCase().includes(q)) return false;
+      return inventoryStatusFilter(p.status);
+    });
   }
 
   function rowBg(status) {
@@ -216,16 +220,16 @@
     return '';
   }
 
-  function renderBanner() {
-    const oos = ARS.Data.listInventory().filter(p => p.status === 'Out of Stock');
+  function renderBanner(all) {
+    const oos = all.filter(p => p.status === 'Out of Stock');
     const el = document.getElementById('oosBanner');
     if (!el) return;
     el.innerHTML = oos.length ? oos.map(p => `
       <a href="${ARS.Pages.appHref(`/app/inventory.html?status=Out%20of%20Stock&highlight=${encodeURIComponent(p.id)}`)}" class="alert-item alert-item--red" style="margin-bottom:14px;display:flex;text-decoration:none;color:inherit">
         <i class="fas fa-exclamation-circle alert-item__icon"></i>
         <div>
-          <div class="alert-item__title">${p.desc} (${p.id}) is completely out of stock</div>
-          <div class="alert-item__desc">Qty: ${p.qty} · Minimum: ${p.min} — Click to filter &amp; highlight this part</div>
+          <div class="alert-item__title">${ARS.Pages.escapeHtml(p.desc)} (${ARS.Pages.escapeHtml(p.id)}) is completely out of stock</div>
+          <div class="alert-item__desc">Qty: ${ARS.Pages.escapeHtml(p.qty)} · Minimum: ${ARS.Pages.escapeHtml(p.min)} — Click to filter &amp; highlight this part</div>
         </div>
       </a>
     `).join('') : '';
@@ -239,27 +243,32 @@
   }
 
   function renderTable() {
-    const data = getFilteredInventory();
     const all = ARS.Data.listInventory();
+    const data = getFilteredInventory(all);
+    const loadError = ARS.FirestoreSync?.getCollectionError?.('inventory');
     renderKpis(all);
-    renderBanner();
+    renderBanner(all);
     document.getElementById('invCount').textContent = `${data.length} item${data.length !== 1 ? 's' : ''}`;
     document.getElementById('invTable').innerHTML = data.length ? data.map(p => `
-      <tr data-row-id="${p.id}" style="${rowBg(p.status)}">
-        <td class="td-mono td-bold" style="white-space:nowrap">${p.partNo}</td>
-        <td class="td-primary">${p.desc}</td>
-        <td><span style="font-size:.76rem;font-weight:600;color:var(--steel)">${p.cat}</span></td>
-        <td style="text-align:center;font-weight:700;color:${p.qty === 0 ? 'var(--red)' : p.qty <= p.min ? '#D97706' : 'inherit'}">${p.qty}</td>
-        <td style="text-align:center;color:var(--warm-gray)">${p.min}</td>
+      <tr data-row-id="${ARS.Pages.escapeHtml(p.id)}" style="${rowBg(p.status)}">
+        <td class="td-mono td-bold" style="white-space:nowrap">${ARS.Pages.escapeHtml(p.partNo)}</td>
+        <td class="td-primary">${ARS.Pages.escapeHtml(p.desc)}</td>
+        <td><span style="font-size:.76rem;font-weight:600;color:var(--steel)">${ARS.Pages.escapeHtml(p.cat)}</span></td>
+        <td style="text-align:center;font-weight:700;color:${p.qty === 0 ? 'var(--red)' : p.qty <= p.min ? '#D97706' : 'inherit'}">${ARS.Pages.escapeHtml(p.qty)}</td>
+        <td style="text-align:center;color:var(--warm-gray)">${ARS.Pages.escapeHtml(p.min)}</td>
         <td style="text-align:right">${fmt$(p.cost)}</td>
         <td style="text-align:right;font-weight:600">${fmt$(p.price)}</td>
         <td>${chip(p.status)}</td>
         <td class="td-actions">
-          <button class="btn btn--ghost btn--sm btn--icon" title="Adjust Stock" onclick="adjustStock('${p.id}')"><i class="fas fa-plus-minus"></i></button>
-          <button class="btn btn--ghost btn--sm btn--icon" title="Photos" onclick="openPartMedia('${p.id}')"><i class="fas fa-camera"></i></button>
+          <button class="btn btn--ghost btn--sm btn--icon" title="Adjust Stock" data-adjust-id="${ARS.Pages.escapeHtml(p.id)}"><i class="fas fa-plus-minus"></i></button>
+          <button class="btn btn--ghost btn--sm btn--icon" title="Photos" data-media-id="${ARS.Pages.escapeHtml(p.id)}"><i class="fas fa-camera"></i></button>
         </td>
       </tr>
-    `).join('') : ARS.Pages.tablePlaceholder(9, 'No items found', 'fa-boxes');
+    `).join('') : ARS.Pages.tablePlaceholder(
+      9,
+      loadError ? 'Inventory could not be loaded. Refresh and try again.' : 'No items found',
+      loadError ? 'fa-triangle-exclamation' : 'fa-boxes',
+    );
   }
 
   window.openPartMedia = (partId) => {
@@ -304,6 +313,12 @@
     });
     document.getElementById('invSearch').addEventListener('input', e => { searchVal = e.target.value; renderTable(); });
     document.getElementById('catFilter').addEventListener('change', e => { catVal = e.target.value; renderTable(); });
+    document.getElementById('invTable').addEventListener('click', (e) => {
+      const adjust = e.target.closest('[data-adjust-id]');
+      if (adjust) return adjustStock(adjust.dataset.adjustId);
+      const media = e.target.closest('[data-media-id]');
+      if (media) openPartMedia(media.dataset.mediaId);
+    });
     document.addEventListener('ars:data-changed', renderTable);
 
     document.getElementById('reorderExportBtn')?.addEventListener('click', () => {

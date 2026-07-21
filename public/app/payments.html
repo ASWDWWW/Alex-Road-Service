@@ -147,7 +147,7 @@
 <script src="/app/js/data-service.js?v=20260720w"></script>
 <script src="/app/js/documents.js?v=20260720w"></script>
 <script src="/app/js/page-scripts.js?v=20260720w"></script>
-<script src="/app/js/app-components.js?v=20260720w"></script>
+<script src="/app/js/app-components.js?v=20260721c"></script>
 <script>
   let activeFilter = 'all', searchVal = '', urlState = {};
 
@@ -157,8 +157,16 @@
     const sel = document.getElementById('payInvoice');
     if (!sel) return;
     const unpaid = ARS.Data.listInvoices().filter(inv => !['Paid', 'Written Off'].includes(inv.status));
-    sel.innerHTML = '<option value="">Select invoice…</option>' +
-      unpaid.map(inv => `<option value="${inv.id}" data-customer="${inv.customerName}" data-balance="${inv.balance}">${inv.id} · ${inv.customerName} · ${fmt$(inv.balance)}${inv.status === 'Overdue' ? ' (OVERDUE)' : ''}</option>`).join('');
+    const options = unpaid.map((inv) => {
+      const option = new Option(
+        `${inv.id} · ${inv.customerName} · ${fmt$(inv.balance)}${inv.status === 'Overdue' ? ' (OVERDUE)' : ''}`,
+        inv.id,
+      );
+      option.dataset.customer = inv.customerName;
+      option.dataset.balance = String(inv.balance);
+      return option;
+    });
+    sel.replaceChildren(new Option('Select invoice…', ''), ...options);
   }
 
   function renderKpis() {

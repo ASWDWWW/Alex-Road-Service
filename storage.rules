@@ -7,14 +7,35 @@ service firebase.storage {
     function role() {
       return request.auth.token.role;
     }
+    function isActiveStaff() {
+      return isAuth()
+        && firestore.exists(/databases/(default)/documents/users/$(request.auth.uid))
+        && firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.active == true
+        && !(firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.status
+          in ['Archived', 'Terminated']);
+    }
     function isAdminOrDev() {
-      return isAuth() && role() in ['admin', 'developer'];
+      return isActiveStaff() && role() in ['admin', 'developer'];
     }
     function isOffice() {
-      return isAuth() && role() in ['admin', 'office', 'developer'];
+      return isActiveStaff() && role() in ['admin', 'office', 'developer'];
     }
     function isStaff() {
-      return isAuth() && role() in ['admin', 'office', 'technician', 'developer'];
+      return isActiveStaff() && role() in ['admin', 'office', 'technician', 'developer'];
+    }
+    function isConversationParticipant(conversationId) {
+      return isActiveStaff()
+        && request.auth.uid in firestore.get(
+          /databases/(default)/documents/conversations/$(conversationId)
+        ).data.participantIds;
+    }
+    function canAccessWorkOrder(workOrderId) {
+      return isOffice()
+        || (isActiveStaff()
+          && role() == 'technician'
+          && request.auth.uid in firestore.get(
+            /databases/(default)/documents/workOrders/$(workOrderId)
+          ).data.techIds);
     }
     function isImageOrVideo() {
       return request.resource.contentType.matches('image/.*')
@@ -39,17 +60,17 @@ service firebase.storage {
     }
 
     match /media/workOrders/{woId}/{fileName} {
-      allow read: if isStaff();
-      allow create: if isStaff() && isImageOrVideo() && validSize();
-      allow update: if isStaff() && isImageOrVideo() && validSize();
-      allow delete: if isStaff();
+      allow read: if canAccessWorkOrder(woId);
+      allow create: if canAccessWorkOrder(woId) && isImageOrVideo() && validSize();
+      allow update: if false;
+      allow delete: if canAccessWorkOrder(woId);
     }
 
     match /media/trucks/{truckId}/{fileName} {
       allow read: if isStaff();
-      allow create: if isStaff() && isImageOrVideo() && validSize();
-      allow update: if isStaff() && isImageOrVideo() && validSize();
-      allow delete: if isStaff();
+      allow create: if isOffice() && isImageOrVideo() && validSize();
+      allow update: if false;
+      allow delete: if isOffice();
     }
 
     match /media/estimates/{estId}/{fileName} {
@@ -68,7 +89,7 @@ service firebase.storage {
 
     match /media/public_leads/{uploadId}/{fileName} {
       allow read: if isOffice();
-      allow create: if isImageOrVideo() && validSize();
+      allow create: if false;
       allow update, delete: if isOffice();
     }
 
@@ -94,7 +115,7 @@ service firebase.storage {
     }
 
     match /media/settings/logo/{fileName} {
-      allow read: if isAuth();
+      allow read: if isActiveStaff();
       allow create, update: if isAdminOrDev()
         && request.resource.contentType.matches('image/.*')
         && underImageLimit();
@@ -102,28 +123,29 @@ service firebase.storage {
     }
 
     match /media/users/{userId}/avatar/{fileName} {
-      allow read: if isAuth();
-      allow create, update: if isAuth()
+      allow read: if isActiveStaff();
+      allow create, update: if isActiveStaff()
         && request.auth.uid == userId
         && request.resource.contentType.matches('image/.*')
         && underImageLimit();
-      allow delete: if isAuth() && request.auth.uid == userId;
+      allow delete: if isActiveStaff() && request.auth.uid == userId;
     }
 
     match /media/users/{userId}/docs/{fileName} {
-      allow read: if isOffice() || (isAuth() && request.auth.uid == userId);
-      allow create: if (isAdminOrDev() || (isAuth() && request.auth.uid == userId))
+      allow read: if isOffice() || (isActiveStaff() && request.auth.uid == userId);
+      allow create: if (isAdminOrDev() || (isActiveStaff() && request.auth.uid == userId))
         && isImageVideoOrPdf() && validSize();
-      allow update: if (isAdminOrDev() || (isAuth() && request.auth.uid == userId))
+      allow update: if (isAdminOrDev() || (isActiveStaff() && request.auth.uid == userId))
         && isImageVideoOrPdf() && validSize();
       allow delete: if isAdminOrDev();
     }
 
     match /media/messages/{conversationId}/{fileName} {
-      allow read: if isStaff();
-      allow create: if isStaff() && isImageVideoOrPdf() && validSize();
-      allow update: if isStaff() && isImageVideoOrPdf() && validSize();
-      allow delete: if isStaff();
+      allow read: if isConversationParticipant(conversationId);
+      allow create: if isConversationParticipant(conversationId)
+        && isImageVideoOrPdf() && validSize();
+      allow update: if false;
+      allow delete: if isConversationParticipant(conversationId);
     }
   }
 }

@@ -2,6 +2,12 @@
 window.ARS = window.ARS || {};
 
 ARS.Pages = {
+  escapeHtml(value) {
+    return String(value ?? '').replace(/[&<>"']/g, (char) => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+    }[char]));
+  },
+
   isDataReady() {
     if (ARS.isDemoMode?.()) return true;
     if (!window.ARSFirebase?.configured) return true;
@@ -51,11 +57,12 @@ ARS.Pages = {
   },
 
   loadingRow(colspan, message = 'Loading…') {
-    return `<tr><td colspan="${colspan}"><div class="loading-state"><div class="loading-state__spinner"></div><div class="loading-state__text">${message}</div></td></tr>`;
+    return `<tr><td colspan="${Number(colspan) || 1}"><div class="loading-state"><div class="loading-state__spinner"></div><div class="loading-state__text">${this.escapeHtml(message)}</div></td></tr>`;
   },
 
   emptyRow(colspan, title, icon = 'fa-inbox') {
-    return `<tr><td colspan="${colspan}"><div class="empty-state"><div class="empty-state__icon"><i class="fas ${icon}"></i></div><div class="empty-state__title">${title}</div></div></td></tr>`;
+    const safeIcon = /^fa-[a-z0-9-]+$/i.test(icon) ? icon : 'fa-inbox';
+    return `<tr><td colspan="${Number(colspan) || 1}"><div class="empty-state"><div class="empty-state__icon"><i class="fas ${safeIcon}"></i></div><div class="empty-state__title">${this.escapeHtml(title)}</div></div></td></tr>`;
   },
 
   tablePlaceholder(colspan, emptyTitle, icon = 'fa-inbox') {
@@ -64,8 +71,10 @@ ARS.Pages = {
   },
 
   entityLink(label, href, extraStyle = '') {
-    if (!href) return label || '—';
-    return `<a href="${this.appHref(href)}" style="color:inherit;text-decoration:none;font-weight:600;${extraStyle}">${label || '—'}</a>`;
+    const safeLabel = this.escapeHtml(label || '—');
+    if (!href) return safeLabel;
+    const safeHref = String(href).startsWith('/') || String(href).startsWith('#') ? this.appHref(href) : '#';
+    return `<a href="${this.escapeHtml(safeHref)}" style="color:inherit;text-decoration:none;font-weight:600;${this.escapeHtml(extraStyle)}">${safeLabel}</a>`;
   },
 
   setActiveFilterTab(tabsId, filter) {
@@ -310,16 +319,28 @@ ARS.Pages = {
   populateCustomerSelect(sel, selectedId) {
     if (!sel) return;
     const customers = ARS.Data.listCustomers({ status: 'Active' });
-    sel.innerHTML = '<option value="">Select customer…</option>' +
-      customers.map((c) => `<option value="${c.id}" data-name="${c.company !== '—' ? c.company : c.name}">${c.company !== '—' ? c.company : c.name}</option>`).join('');
+    const placeholder = new Option('Select customer…', '');
+    const options = customers.map((c) => {
+      const name = c.company !== '—' ? c.company : c.name;
+      const option = new Option(name, c.id);
+      option.dataset.name = name;
+      return option;
+    });
+    sel.replaceChildren(placeholder, ...options);
     if (selectedId) sel.value = selectedId;
   },
 
   populateTruckSelect(sel, customerId, selectedId) {
     if (!sel) return;
     const trucks = customerId ? ARS.Data.listTrucks({ customerId }) : [];
-    sel.innerHTML = '<option value="">Select truck…</option>' +
-      trucks.map((t) => `<option value="${t.id}" data-label="Unit ${t.unit} · ${t.make} ${t.model}">${`Unit ${t.unit} · ${t.make} ${t.model}`}</option>`).join('');
+    const placeholder = new Option('Select truck…', '');
+    const options = trucks.map((t) => {
+      const label = `Unit ${t.unit} · ${t.make} ${t.model}`;
+      const option = new Option(label, t.id);
+      option.dataset.label = label;
+      return option;
+    });
+    sel.replaceChildren(placeholder, ...options);
     if (selectedId) sel.value = selectedId;
   },
 
@@ -331,12 +352,14 @@ ARS.Pages = {
       const name = typeof t === 'string' ? t : (t.name || '');
       const uid = typeof t === 'string' ? '' : (t.uid || '');
       const isSelected = current === name || current === uid;
-      return `<option value="${name}" data-uid="${uid}"${isSelected ? ' selected' : ''}>${name}</option>`;
+      const option = new Option(name, name, false, isSelected);
+      option.dataset.uid = uid;
+      return option;
     });
     if (current && !techs.some((t) => (typeof t === 'string' ? t : t.name) === current || t.uid === current)) {
-      options.unshift(`<option value="${current}" selected>${current}</option>`);
+      options.unshift(new Option(current, current, false, true));
     }
-    sel.innerHTML = '<option value="">Unassigned</option>' + options.join('');
+    sel.replaceChildren(new Option('Unassigned', ''), ...options);
     if (current) sel.value = current;
   },
 
@@ -360,15 +383,23 @@ ARS.Pages = {
       el.innerHTML = '<div class="td-muted" style="padding:10px;font-size:.85rem">No active technicians yet. Hire technicians on the Employees page.</div>';
       return;
     }
-    el.innerHTML = techs.map((t) => {
+    el.replaceChildren(...techs.map((t) => {
       const name = typeof t === 'string' ? t : (t.name || '');
       const uid = typeof t === 'string' ? '' : (t.uid || '');
       const checked = selectedKeys.has(uid.toLowerCase()) || selectedKeys.has(name.toLowerCase());
-      return `<label class="tech-picker__row">
-        <input type="checkbox" value="${name.replace(/"/g, '&quot;')}" data-uid="${uid}" ${checked ? 'checked' : ''} ${disabled ? 'disabled' : ''}>
-        <span>${name}</span>
-      </label>`;
-    }).join('');
+      const label = document.createElement('label');
+      label.className = 'tech-picker__row';
+      const input = document.createElement('input');
+      input.type = 'checkbox';
+      input.value = name;
+      input.dataset.uid = uid;
+      input.checked = checked;
+      input.disabled = disabled;
+      const text = document.createElement('span');
+      text.textContent = name;
+      label.append(input, text);
+      return label;
+    }));
   },
 
   getSelectedTechs(el) {
@@ -381,8 +412,10 @@ ARS.Pages = {
 
   populateServiceSelect(sel) {
     if (!sel) return;
-    sel.innerHTML = '<option value="">Select service…</option>' +
-      ARS.Data.getServiceTypes().map((s) => `<option>${s}</option>`).join('');
+    sel.replaceChildren(
+      new Option('Select service…', ''),
+      ...ARS.Data.getServiceTypes().map((service) => new Option(service, service)),
+    );
   },
 
   /** Shared status filter helpers used by list pages */

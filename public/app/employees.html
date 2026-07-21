@@ -136,16 +136,9 @@
     </div>
     <div class="modal__body">
       <p style="color:var(--steel);font-size:.85rem;margin-bottom:14px" id="hireSuccessMsg">
-        Account created with the shared default password. A password-reset email was sent so they can set their own password.
+        Account created. A secure password-setup email was sent to the employee.
       </p>
       <div class="form-row"><label class="form-label">Email</label><input class="form-input" id="hireSuccessEmail" readonly></div>
-      <div class="form-row">
-        <label class="form-label">Default Password</label>
-        <div style="display:flex;gap:8px">
-          <input class="form-input" id="hireSuccessPassword" readonly style="font-family:'Courier New',monospace">
-          <button type="button" class="btn btn--secondary btn--icon" id="hireSuccessCopyBtn" title="Copy password"><i class="fas fa-copy"></i></button>
-        </div>
-      </div>
       <p id="hireSuccessEmailStatus" style="font-size:.8rem;color:var(--steel);margin-top:8px"></p>
     </div>
     <div class="modal__footer">
@@ -160,7 +153,7 @@
 <script src="/app/js/auth.js?v=20260720w"></script>
 <script src="/app/js/data-service.js?v=20260720w"></script>
 <script src="/app/js/page-scripts.js?v=20260720w"></script>
-<script src="/app/js/app-components.js?v=20260720w"></script>
+<script src="/app/js/app-components.js?v=20260721c"></script>
 <script>
   let activeFilter = 'all', searchVal = '', urlState = {}, openEmployeeUid = '';
 
@@ -245,7 +238,7 @@
           <div><span style="color:var(--steel)">Title:</span> ${esc(e.jobTitle || '—')}</div>
           <div><span style="color:var(--steel)">Department:</span> ${esc(e.department || '—')}</div>
           <div><span style="color:var(--steel)">Hire date:</span> ${e.hireDate ? ARS.fmtDate(e.hireDate) : '—'}</div>
-          <div><span style="color:var(--steel)">Status:</span> ${e.status}</div>
+          <div><span style="color:var(--steel)">Status:</span> ${esc(e.status)}</div>
           <div><span style="color:var(--steel)">Phone:</span> ${esc(e.phone || '—')}</div>
           <div><span style="color:var(--steel)">Employment:</span> ${esc(e.employmentType || '—')}</div>
         </div>
@@ -508,16 +501,13 @@
 
   function showHireSuccess(res) {
     document.getElementById('hireSuccessEmail').value = res.email || '';
-    document.getElementById('hireSuccessPassword').value = res.defaultPassword || res.tempPassword || 'AlexRoadHire!';
     const status = document.getElementById('hireSuccessEmailStatus');
     if (status) {
       if (res.passwordResetSent) {
         status.textContent = 'Password-reset email sent — check inbox and spam. They can set a new password from the link.';
         status.style.color = 'var(--green, #2e7d32)';
       } else {
-        status.textContent = res.passwordResetError
-          ? `Email not sent (${res.passwordResetError}). Share the default password, or use “Send password reset” on their profile.`
-          : 'Email not sent automatically — share the default password, or use “Send password reset” on their profile.';
+        status.textContent = 'Password setup email was not confirmed. Use “Send password reset” on the employee profile.';
         status.style.color = 'var(--amber, #e65100)';
       }
     }
@@ -593,14 +583,6 @@
       } finally {
         btn.disabled = false;
       }
-    });
-
-    document.getElementById('hireSuccessCopyBtn')?.addEventListener('click', () => {
-      const pw = document.getElementById('hireSuccessPassword').value;
-      if (!pw) return;
-      navigator.clipboard?.writeText(pw)
-        .then(() => showToast('Password copied', 'success'))
-        .catch(() => showToast('Could not copy — select and copy manually', 'error'));
     });
 
     if (urlState.highlight) {

@@ -332,7 +332,7 @@
 
 <script src="/app/js/page-scripts.js?v=20260720w"></script>
 
-<script src="/app/js/app-components.js?v=20260720w"></script>
+<script src="/app/js/app-components.js?v=20260721c"></script>
 
 <script>
 
@@ -344,9 +344,15 @@
 
 
 
+  function escapeReportText(value) {
+    return String(value ?? '').replace(/[&<>"']/g, (char) => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+    }[char]));
+  }
+
   function emptyState(msg) {
 
-    return `<div style="padding:16px;color:var(--steel);font-size:.85rem">${msg}</div>`;
+    return `<div style="padding:16px;color:var(--steel);font-size:.85rem">${escapeReportText(msg)}</div>`;
 
   }
 
@@ -372,7 +378,7 @@
 
       <div class="bar-row">
 
-        <div class="chart-month-label">${r.label}</div>
+        <div class="chart-month-label">${escapeReportText(r.label)}</div>
 
         <div class="bar-track"><div class="bar-fill${i === revenue.length - 1 ? ' bar-fill--blue' : ''}" style="width:${Math.round((r.total / max) * 100)}%"><span class="bar-value">${fmt$(r.total)}</span></div></div>
 
@@ -403,8 +409,8 @@
     const fills = ['', ' bar-fill--blue', ' bar-fill--green', ' bar-fill--amber', ' bar-fill--blue', ''];
 
     el.innerHTML = categories.map((c, i) => `
-      <div class="bar-row" style="cursor:pointer" data-wo-filter-q="${encodeURIComponent(c.name)}" title="View work orders for ${c.name}">
-        <div class="service-bar-label">${c.name}</div>
+      <div class="bar-row" style="cursor:pointer" data-wo-filter-q="${encodeURIComponent(c.name)}" title="View work orders for ${escapeReportText(c.name)}">
+        <div class="service-bar-label">${escapeReportText(c.name)}</div>
         <div class="bar-track"><div class="bar-fill${fills[i % fills.length]}" style="width:${Math.round((c.total / max) * 100)}%${i === fills.length - 1 ? ';background:#9CA3AF' : ''}"><span class="bar-value">${fmt$(c.total)}</span></div></div>
       </div>
     `).join('');
@@ -437,8 +443,8 @@
     el.innerHTML = `<div class="top-list">${customers.map((c, i) => {
       const custId = findCustomerIdByName(c.name);
       const nameHtml = custId
-        ? `<a href="${ARS.Pages.appHref(`/app/customer-detail.html?id=${custId}`)}" class="top-list-name" style="color:inherit;text-decoration:none">${c.name}</a>`
-        : `<div class="top-list-name">${c.name}</div>`;
+        ? `<a href="${ARS.Pages.appHref(`/app/customer-detail.html?id=${encodeURIComponent(custId)}`)}" class="top-list-name" style="color:inherit;text-decoration:none">${escapeReportText(c.name)}</a>`
+        : `<div class="top-list-name">${escapeReportText(c.name)}</div>`;
       return `
       <div class="top-list-item">
         <div class="top-list-rank ${RANK_CLASS[i] || ''}"${!RANK_CLASS[i] ? ' style="background:#D1D5DB;color:#374151"' : ''}>${i + 1}</div>
@@ -470,9 +476,9 @@
       <div style="display:flex;flex-direction:column;gap:14px">
 
         ${tech.map((t, i) => `
-          <div style="cursor:pointer" data-wo-filter-q="${encodeURIComponent(t.tech)}" title="View ${t.tech}'s work orders">
+          <div style="cursor:pointer" data-wo-filter-q="${encodeURIComponent(t.tech)}" title="View ${escapeReportText(t.tech)}&#39;s work orders">
             <div style="display:flex;justify-content:space-between;margin-bottom:5px">
-              <span style="font-size:.82rem;font-weight:600">${t.tech}</span>
+              <span style="font-size:.82rem;font-weight:600">${escapeReportText(t.tech)}</span>
               <span style="font-size:.78rem;color:var(--warm-gray)">${t.completed} jobs · ${fmt$(t.revenue)}</span>
             </div>
             <div style="height:8px;background:rgba(0,0,0,.07);border-radius:4px;overflow:hidden">
@@ -536,7 +542,7 @@
           const bucket = aging[b.key];
 
           const desc = bucket.items.slice(0, 2).map((i) =>
-            `<a href="${ARS.Pages.appHref(`/app/invoice-detail.html?id=${i.id}`)}" style="color:inherit;text-decoration:underline">${i.id}</a> · ${i.customerName}`
+            `<a href="${ARS.Pages.appHref(`/app/invoice-detail.html?id=${encodeURIComponent(i.id)}`)}" style="color:inherit;text-decoration:underline">${escapeReportText(i.id)}</a> · ${escapeReportText(i.customerName)}`
           ).join(', ');
 
           return `
@@ -589,7 +595,7 @@
 
       <tr>
 
-        <td class="td-bold">${r.month}</td>
+        <td class="td-bold">${escapeReportText(r.month)}</td>
 
         <td style="text-align:center">${r.jobs}</td>
 
@@ -651,10 +657,11 @@
 
     document.getElementById('reportSubtitle').textContent = `Business performance — ${data.rangeLabel}`;
     document.getElementById('kpiRevenueLabel').textContent = `Total Revenue (${data.rangeLabel})`;
-    document.getElementById('revenueChartTitle').innerHTML = `<i class="fas fa-chart-bar" style="color:var(--red);margin-right:8px"></i>Monthly Revenue — ${data.rangeLabel}`;
-    document.getElementById('serviceChartTitle').innerHTML = `<i class="fas fa-tools" style="color:var(--red);margin-right:8px"></i>Revenue by Service — ${data.rangeLabel}`;
-    document.getElementById('techChartTitle').innerHTML = `<i class="fas fa-hard-hat" style="color:var(--red);margin-right:8px"></i>Technician Output — ${data.rangeLabel}`;
-    document.getElementById('woSummaryTitle').innerHTML = `<i class="fas fa-table" style="color:var(--red);margin-right:8px"></i>Work Order Summary — ${data.rangeLabel}`;
+    const rangeLabel = escapeReportText(data.rangeLabel);
+    document.getElementById('revenueChartTitle').innerHTML = `<i class="fas fa-chart-bar" style="color:var(--red);margin-right:8px"></i>Monthly Revenue — ${rangeLabel}`;
+    document.getElementById('serviceChartTitle').innerHTML = `<i class="fas fa-tools" style="color:var(--red);margin-right:8px"></i>Revenue by Service — ${rangeLabel}`;
+    document.getElementById('techChartTitle').innerHTML = `<i class="fas fa-hard-hat" style="color:var(--red);margin-right:8px"></i>Technician Output — ${rangeLabel}`;
+    document.getElementById('woSummaryTitle').innerHTML = `<i class="fas fa-table" style="color:var(--red);margin-right:8px"></i>Work Order Summary — ${rangeLabel}`;
 
     document.getElementById('kpiReportRevenue').textContent = fmt$(data.totalRevenue);
     document.getElementById('kpiReportJobs').textContent = data.completedJobs;

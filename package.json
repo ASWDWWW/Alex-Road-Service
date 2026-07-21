@@ -6,17 +6,23 @@
     "serve": "npx --yes serve public -l 3000",
     "firebase": "firebase",
     "login": "firebase login",
-    "deploy": "firebase deploy --only hosting,functions,firestore:indexes,firestore:rules",
+    "check:syntax": "node scripts/check-js.cjs",
+    "test": "node --test tests/security-regressions.test.cjs",
+    "test:rules": "firebase emulators:exec --project alex-road-service-rules-test --only firestore,storage \"node --test tests/security-rules.test.cjs\"",
+    "test:functions": "firebase emulators:exec --project alex-road-service-rules-test --only auth,firestore,functions \"node --test tests/functions-smoke.test.cjs\"",
+    "audit:prod": "npm audit --omit=dev --audit-level=high && npm --prefix functions audit --omit=dev --audit-level=high",
+    "check": "npm run check:syntax && npm test && npm run test:rules && npm run test:functions && npm run audit:prod",
+    "deploy": "npm run check && firebase deploy --only hosting,functions,firestore:indexes,firestore:rules,storage",
     "deploy:hosting": "firebase deploy --only hosting:launchpage-alex-roadservice",
-    "deploy:rules": "firebase deploy --only firestore:rules,firestore:indexes",
+    "deploy:rules": "firebase deploy --only firestore:rules,firestore:indexes,storage",
     "deploy:functions": "firebase deploy --only functions",
-    "deploy:artifacts:cleanup": "firebase functions:artifacts:setpolicy --location us-central1 --days 1 --force",
-    "bootstrap": "node scripts/call-bootstrap.js"
+    "deploy:artifacts:cleanup": "firebase functions:artifacts:setpolicy --location us-central1 --days 1 --force"
   },
   "dependencies": {
-    "firebase": "^11.0.0"
+    "firebase": "^12.16.0"
   },
   "devDependencies": {
-    "firebase-tools": "^13.0.0"
+    "@firebase/rules-unit-testing": "^5.0.1",
+    "firebase-tools": "^14.23.0"
   }
 }

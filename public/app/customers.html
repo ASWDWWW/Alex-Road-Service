@@ -124,7 +124,7 @@
 <script src="/app/js/auth.js?v=20260720w"></script>
 <script src="/app/js/data-service.js?v=20260720w"></script>
 <script src="/app/js/page-scripts.js?v=20260720w"></script>
-<script src="/app/js/app-components.js?v=20260720w"></script>
+<script src="/app/js/app-components.js?v=20260721c"></script>
 <script>
   let activeFilter = 'all', searchVal = '', urlState = {};
 
@@ -147,19 +147,19 @@
     const canEdit = ARS.can('customers.create');
     const canDeactivate = ARS.can('customers.deactivate');
     document.getElementById('custTable').innerHTML = data.length ? data.map(c => `
-      <tr data-row-id="${c.id}" style="cursor:pointer">
-        <td class="td-mono td-muted">${c.id}</td>
+      <tr data-row-id="${ARS.Pages.escapeHtml(c.id)}" style="cursor:pointer">
+        <td class="td-mono td-muted">${ARS.Pages.escapeHtml(c.id)}</td>
         <td class="td-primary">${ARS.Pages.entityLink(c.name, `/app/customer-detail.html?id=${c.id}`)}</td>
-        <td class="td-muted">${c.company}</td>
-        <td><a href="tel:${c.phone.replace(/\D/g,'')}" style="color:var(--red);font-weight:600">${c.phone}</a></td>
+        <td class="td-muted">${ARS.Pages.escapeHtml(c.company)}</td>
+        <td><a href="tel:${c.phone.replace(/\D/g,'')}" style="color:var(--red);font-weight:600">${ARS.Pages.escapeHtml(c.phone)}</a></td>
         <td>${chip(c.type)}</td>
-        <td style="text-align:center;font-weight:600">${c.trucks}</td>
-        <td class="td-muted">${c.lastService}</td>
-        <td class="td-bold">${c.spent}</td>
+        <td style="text-align:center;font-weight:600">${ARS.Pages.escapeHtml(c.trucks)}</td>
+        <td class="td-muted">${ARS.Pages.escapeHtml(c.lastService)}</td>
+        <td class="td-bold">${ARS.Pages.escapeHtml(c.spent)}</td>
         <td>${chip(c.status)}</td>
         <td class="td-actions">
-          <a class="btn btn--ghost btn--sm btn--icon" href="/app/customer-detail.html?id=${c.id}" title="View"><i class="fas fa-eye"></i></a>
-          ${canDeactivate && c.status === 'Active' ? `<button class="btn btn--ghost btn--sm btn--icon" onclick="deactivateCust('${c.id}')" title="Deactivate"><i class="fas fa-user-slash"></i></button>` : ''}
+          <a class="btn btn--ghost btn--sm btn--icon" href="/app/customer-detail.html?id=${encodeURIComponent(c.id)}" title="View"><i class="fas fa-eye"></i></a>
+          ${canDeactivate && c.status === 'Active' ? `<button class="btn btn--ghost btn--sm btn--icon" data-deactivate-id="${ARS.Pages.escapeHtml(c.id)}" title="Deactivate"><i class="fas fa-user-slash"></i></button>` : ''}
         </td>
       </tr>`).join('') : ARS.Pages.tablePlaceholder(10, 'No customers found', 'fa-users');
   }
@@ -188,6 +188,11 @@
     ARS.Pages.bindKpiFilter('kpiOwner', '/app/customers.html?status=Owner-Op');
     ARS.Pages.bindKpiFilter('kpiActive', '/app/customers.html?status=Active');
     document.getElementById('custTable')?.addEventListener('click', (e) => {
+      const deactivate = e.target.closest('[data-deactivate-id]');
+      if (deactivate) {
+        deactivateCust(deactivate.dataset.deactivateId);
+        return;
+      }
       if (e.target.closest('a,button')) return;
       const tr = e.target.closest('tr[data-row-id]');
       if (tr) window.location.href = ARS.Pages.appHref(`/app/customer-detail.html?id=${tr.dataset.rowId}`);

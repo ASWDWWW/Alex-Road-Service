@@ -124,7 +124,7 @@
 <script src="/app/js/data-service.js?v=20260720w"></script>
 <script src="/app/js/documents.js?v=20260720w"></script>
 <script src="/app/js/page-scripts.js?v=20260720w"></script>
-<script src="/app/js/app-components.js?v=20260720w"></script>
+<script src="/app/js/app-components.js?v=20260721c"></script>
 <script>
   let activeFilter = 'all', searchVal = '', urlState = {};
 
@@ -153,23 +153,23 @@
     renderKpis(all);
     document.getElementById('estCount').textContent = `${data.length} estimate${data.length !== 1 ? 's' : ''}`;
     document.getElementById('estTable').innerHTML = data.length ? data.map(e => `
-      <tr data-row-id="${e.id}" style="cursor:pointer">
+      <tr data-row-id="${ARS.Pages.escapeHtml(e.id)}" style="cursor:pointer">
         <td class="td-mono td-bold">${ARS.Pages.entityLink(e.id, `/app/estimate-detail.html?id=${e.id}`)}</td>
-        <td class="td-muted">${e.date}</td>
+        <td class="td-muted">${ARS.Pages.escapeHtml(e.date)}</td>
         <td class="td-primary">${ARS.Pages.entityLink(e.customerName, e.customerId ? `/app/customer-detail.html?id=${e.customerId}` : '')}</td>
-        <td class="td-muted" style="font-size:.76rem">${e.truckLabel || '—'}</td>
-        <td class="td-wrap" style="font-size:.8rem;color:var(--steel)">${e.desc}</td>
+        <td class="td-muted" style="font-size:.76rem">${ARS.Pages.escapeHtml(e.truckLabel || '—')}</td>
+        <td class="td-wrap" style="font-size:.8rem;color:var(--steel)">${ARS.Pages.escapeHtml(e.desc)}</td>
         <td style="text-align:right">${fmt$(e.labor)}</td>
         <td style="text-align:right">${fmt$(e.parts)}</td>
         <td style="text-align:right;font-weight:700">${fmt$(e.total)}</td>
         <td>${chip(e.status)}</td>
         <td class="td-actions">
-          <button class="btn btn--ghost btn--sm btn--icon" onclick="ARS.Documents.printEstimate('${e.id}')" title="Print"><i class="fas fa-print"></i></button>
-          ${e.status === 'Approved' ? `<button class="btn btn--primary btn--sm" onclick="convertEst('${e.id}')">→ WO</button>` : ''}
+          <button class="btn btn--ghost btn--sm btn--icon" data-est-action="print" data-est-id="${ARS.Pages.escapeHtml(e.id)}" title="Print"><i class="fas fa-print"></i></button>
+          ${e.status === 'Approved' ? `<button class="btn btn--primary btn--sm" data-est-action="convert" data-est-id="${ARS.Pages.escapeHtml(e.id)}">→ WO</button>` : ''}
           ${e.status === 'Pending' || e.status === 'Sent' ? `
-            <button class="btn btn--secondary btn--sm" onclick="sendEst('${e.id}')" title="Send"><i class="fas fa-paper-plane"></i></button>
-            <button class="btn btn--ghost btn--sm" onclick="approveEst('${e.id}')" title="Approve"><i class="fas fa-check"></i></button>
-            <button class="btn btn--ghost btn--sm" onclick="declineEst('${e.id}')" title="Decline"><i class="fas fa-times"></i></button>
+            <button class="btn btn--secondary btn--sm" data-est-action="send" data-est-id="${ARS.Pages.escapeHtml(e.id)}" title="Send"><i class="fas fa-paper-plane"></i></button>
+            <button class="btn btn--ghost btn--sm" data-est-action="approve" data-est-id="${ARS.Pages.escapeHtml(e.id)}" title="Approve"><i class="fas fa-check"></i></button>
+            <button class="btn btn--ghost btn--sm" data-est-action="decline" data-est-id="${ARS.Pages.escapeHtml(e.id)}" title="Decline"><i class="fas fa-times"></i></button>
           ` : ''}
         </td>
       </tr>
@@ -245,6 +245,18 @@
     ARS.Pages.bindKpiFilter('kpiEstApproved', '/app/estimates.html?status=Approved');
     ARS.Pages.bindKpiFilter('kpiEstValue', '/app/estimates.html?status=awaiting');
     document.getElementById('estTable')?.addEventListener('click', (e) => {
+      const action = e.target.closest('[data-est-action]');
+      if (action) {
+        const handlers = {
+          print: (id) => ARS.Documents.printEstimate(id),
+          convert: convertEst,
+          send: sendEst,
+          approve: approveEst,
+          decline: declineEst,
+        };
+        handlers[action.dataset.estAction]?.(action.dataset.estId);
+        return;
+      }
       if (e.target.closest('a,button')) return;
       const tr = e.target.closest('tr[data-row-id]');
       if (tr) window.location.href = ARS.Pages.appHref(`/app/estimate-detail.html?id=${tr.dataset.rowId}`);

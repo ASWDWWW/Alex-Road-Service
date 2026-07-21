@@ -1,43 +1,26 @@
-# Staff Login Credentials
+# Staff Account Provisioning
 
 **Project:** Alex Road Service Ops Platform  
 **Firebase project:** `launchpage-alex-roadservice`  
 **Login URL:** https://launchpage-alex-roadservice.web.app/login.html  
-**Bootstrap URL (one-time):** https://launchpage-alex-roadservice.web.app/setup.html
+Staff credentials must never be committed to this repository. Every Firebase Authentication account must have a unique password established through Firebase's password-setup/reset email flow.
+
+## Demo account
+
+The public demo account is shown on `/login.html`. It is implemented entirely in the browser, uses isolated sample data, never authenticates with Firebase, and never charges Stripe.
 
 ---
 
-## Staff accounts
+## Staff provisioning
 
-| Email | Password | Role | Access |
-|-------|----------|------|--------|
-| developer@alexroadservice.com | `ChangeMe-Dev-2026!` | developer | Full access (superuser) |
-| admin@alexroadservice.com | `password` | admin | Full shop ops + settings |
-| office@alexroadservice.com | `password` | office | Customers, work orders, invoices, payments, leads |
-| tech@alexroadservice.com | `password` | technician | Assigned work orders, read customers/trucks/inventory |
-| demo@alexroadservice.com | `Demo2026!` | demo | Full sandbox — sample data only; resets on each demo sign-in (no Firebase) |
+1. Provision the initial administrator from a trusted Firebase Admin environment as documented in `docs/FIREBASE_SETUP.md`.
+2. Create subsequent employees from the Employees screen.
+3. The employee must use the emailed setup link before signing in.
+4. Archive or terminate access immediately when employment ends.
 
-**Demo account:** Use **Try Demo Account** on `/login.html` or sign in with the credentials above. Data is isolated in the browser and does not sync to Firestore. Payments are simulated (no Stripe charge).
+## July 21, 2026 credential rotation
 
----
-
-## Bootstrap secret
-
-Used once on `/setup.html` to create Auth users, custom claims, and Firestore `users` profiles:
-
-```
-alex-road-bootstrap-2026
-```
-
-Check **Reset passwords for existing users** only if you need to re-apply bootstrap passwords.
-
----
-
-## After login
-
-1. Sign out and sign back in once so custom role claims refresh.
-2. Change all passwords in **Firebase Console → Authentication** before production use.
-3. Developer and admin accounts can manage roles via the `setUserRole` Cloud Function or Settings → Bootstrap Firebase Staff.
+The legacy `developer@`, `admin@`, `office@`, and `tech@alexroadservice.com` Firebase accounts were disabled after their former shared passwords were found in repository history. Password-reset emails were requested for all four accounts. Keep each account disabled until its owner confirms a unique new password, then re-enable it from Firebase Authentication.
 
 ---
 
@@ -48,4 +31,4 @@ Check **Reset passwords for existing users** only if you need to re-apply bootst
 
 ---
 
-**Security:** Keep this file out of public repos or redact passwords before sharing externally. Firebase web API keys are public by design; security relies on Auth, Firestore rules, and strong passwords.
+**Security:** Firebase web API keys are public identifiers. Security depends on Authentication, App Check, least-privilege rules, unique credentials, and server-side authorization.

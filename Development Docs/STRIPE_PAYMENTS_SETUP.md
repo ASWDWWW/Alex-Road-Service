@@ -13,7 +13,7 @@ This document is the single checklist for enabling Stripe payments. Manual payme
 - [ ] Firebase project on **Blaze** plan (required for Cloud Functions)
 - [ ] **Email/Password** authentication enabled (Firebase Console → Authentication)
 - [ ] **Firestore** database created (production mode)
-- [ ] Cloud Functions deployed at least once (`bootstrapStaff`, `createStripeCheckout`, `stripeWebhook`)
+- [ ] Cloud Functions deployed at least once (`createStripeCheckout`, `createStripeRefund`, `stripeWebhook`)
 - [ ] Staff accounts bootstrapped via `/setup.html` or `npm run bootstrap`
 - [ ] All default passwords changed in Firebase Console → Authentication
 - [ ] Staff can sign in at `/login.html` (Firebase Auth only — no mock login)

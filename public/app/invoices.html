@@ -133,7 +133,7 @@
 <script src="/app/js/data-service.js?v=20260720w"></script>
 <script src="/app/js/documents.js?v=20260720w"></script>
 <script src="/app/js/page-scripts.js?v=20260720w"></script>
-<script src="/app/js/app-components.js?v=20260720w"></script>
+<script src="/app/js/app-components.js?v=20260721c"></script>
 <script>
   let activeFilter = 'all', searchVal = '', urlState = {};
 
@@ -191,8 +191,10 @@
     const sel = document.getElementById('newInvWo');
     if (!sel) return;
     const wos = ARS.Data.listWorkOrdersReadyToInvoice();
-    sel.innerHTML = '<option value="">Select completed work order…</option>' +
-      wos.map(w => `<option value="${w.id}">${w.id} · ${w.customerName} · ${fmt$(w.total)}</option>`).join('');
+    sel.replaceChildren(
+      new Option('Select completed work order…', ''),
+      ...wos.map((w) => new Option(`${w.id} · ${w.customerName} · ${fmt$(w.total)}`, w.id)),
+    );
   }
 
   ARS.Pages.waitReady(() => {

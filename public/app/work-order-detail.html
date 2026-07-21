@@ -22,7 +22,7 @@
 <script src="/app/js/data-service.js?v=20260720w"></script>
 <script src="/app/js/documents.js?v=20260720w"></script>
 <script src="/app/js/page-scripts.js?v=20260720w"></script>
-<script src="/app/js/app-components.js?v=20260720w"></script>
+<script src="/app/js/app-components.js?v=20260721c"></script>
 <script>
   const EDITABLE_STATUSES = ['Open', 'In Progress', 'Waiting Parts', 'Completed'];
 
@@ -52,20 +52,21 @@
     const canInvoice = ARS.can('workOrders.invoice') && w.status === 'Completed' && !w.invoiced;
     const linkedInv = ARS.Data.listInvoices().find((inv) => inv.workOrderId === w.id);
     const est = w.estimateId ? ARS.Data.getEstimate(w.estimateId) : null;
-    const custHref = w.customerId ? `/app/customer-detail.html?id=${w.customerId}` : '';
+    const custHref = w.customerId ? `/app/customer-detail.html?id=${encodeURIComponent(w.customerId)}` : '';
     const truck = w.truckId ? ARS.Data.getTruck(w.truckId) : null;
-    const truckHref = truck ? `/app/truck-detail.html?id=${truck.id}` : '';
+    const truckHref = truck ? `/app/truck-detail.html?id=${encodeURIComponent(truck.id)}` : '';
+    const esc = ARS.Pages.escapeHtml;
     document.getElementById('detailRoot').innerHTML = `
       <div class="page-header">
         <div>
           <a href="/app/work-orders.html" style="font-size:.8rem;color:var(--steel)"><i class="fas fa-arrow-left"></i> Work Orders</a>
-          <div class="page-header__title" style="margin-top:8px">${w.id}</div>
+          <div class="page-header__title" style="margin-top:8px">${esc(w.id)}</div>
           <div class="page-header__sub">${ARS.Pages.entityLink(w.customerName, custHref)} · ${ARS.Pages.entityLink(w.truckLabel || '—', truckHref)}</div>
         </div>
         <div class="page-header__actions" style="display:flex;gap:8px;flex-wrap:wrap">
           <button class="btn btn--secondary" id="printBtn"><i class="fas fa-print"></i> Print</button>
-          ${linkedInv ? `<a href="${ARS.Pages.appHref(`/app/invoice-detail.html?id=${linkedInv.id}`)}" class="btn btn--secondary"><i class="fas fa-file-invoice"></i> View Invoice</a>` : ''}
-          ${est ? `<a href="${ARS.Pages.appHref(`/app/estimate-detail.html?id=${est.id}`)}" class="btn btn--ghost"><i class="fas fa-file-alt"></i> Source Estimate</a>` : ''}
+          ${linkedInv ? `<a href="${ARS.Pages.appHref(`/app/invoice-detail.html?id=${encodeURIComponent(linkedInv.id)}`)}" class="btn btn--secondary"><i class="fas fa-file-invoice"></i> View Invoice</a>` : ''}
+          ${est ? `<a href="${ARS.Pages.appHref(`/app/estimate-detail.html?id=${encodeURIComponent(est.id)}`)}" class="btn btn--ghost"><i class="fas fa-file-alt"></i> Source Estimate</a>` : ''}
           ${canInvoice ? `<button class="btn btn--primary" id="invoiceBtn"><i class="fas fa-file-invoice-dollar"></i> Generate Invoice</button>` : ''}
           ${editable ? `<button class="btn btn--ghost" id="saveBtn"><i class="fas fa-save"></i> Save Changes</button>` : chip(w.status)}
         </div>
@@ -75,7 +76,7 @@
           <div class="app-card__header"><div class="app-card__title">Job Details</div></div>
           <div class="app-card__body" style="display:grid;gap:12px;font-size:.88rem">
             <div class="form-row-2">
-              <div class="form-row"><label class="form-label">Date</label><input class="form-input" id="fDate" type="date" value="${ARS.toInputDate(w.date)}" ${editable ? '' : 'readonly'}></div>
+              <div class="form-row"><label class="form-label">Date</label><input class="form-input" id="fDate" type="date" value="${esc(ARS.toInputDate(w.date))}" ${editable ? '' : 'readonly'}></div>
               <div class="form-row"><label class="form-label">Status</label>
                 <select class="form-select" id="fStatus" ${editable ? '' : 'disabled'}>
                   ${statusOptions.map(s => `<option value="${s}"${s===w.status?' selected':''}>${s}</option>`).join('')}
@@ -86,16 +87,16 @@
               <div class="tech-picker" id="fTechPicker"></div>
               ${ARS.can('workOrders.assign') && editable ? '<div class="td-muted" style="font-size:.75rem;margin-top:4px">Select one or more technicians</div>' : ''}
             </div>
-            <div class="form-row"><label class="form-label">Service Type</label><input class="form-input" id="fService" value="${w.serviceType || ''}" ${editable ? '' : 'readonly'}></div>
-            <div class="form-row"><label class="form-label">Description</label><textarea class="form-textarea" id="fDesc" ${editable ? '' : 'readonly'}>${w.desc || ''}</textarea></div>
+            <div class="form-row"><label class="form-label">Service Type</label><input class="form-input" id="fService" value="${esc(w.serviceType || '')}" ${editable ? '' : 'readonly'}></div>
+            <div class="form-row"><label class="form-label">Description</label><textarea class="form-textarea" id="fDesc" ${editable ? '' : 'readonly'}>${esc(w.desc || '')}</textarea></div>
           </div>
         </div>
         <div class="app-card">
           <div class="app-card__header"><div class="app-card__title">Totals</div></div>
           <div class="app-card__body" style="display:flex;flex-direction:column;gap:10px">
-            <div class="form-row"><label class="form-label">Labor ($)</label><input class="form-input" id="fLabor" type="number" step="0.01" value="${w.labor}" ${editable ? '' : 'readonly'}></div>
-            <div class="form-row"><label class="form-label">Parts ($)</label><input class="form-input" id="fParts" type="number" step="0.01" value="${w.parts}" ${editable ? '' : 'readonly'}></div>
-            <div style="display:flex;justify-content:space-between;border-top:1px solid var(--border);padding-top:10px;font-size:1.1rem"><span>Total</span><strong id="fTotal">${fmt$(w.total)}</strong></div>
+            <div class="form-row"><label class="form-label">Labor ($)</label><input class="form-input" id="fLabor" type="number" step="0.01" value="${esc(w.labor)}" ${editable ? '' : 'readonly'}></div>
+            <div class="form-row"><label class="form-label">Parts ($)</label><input class="form-input" id="fParts" type="number" step="0.01" value="${esc(w.parts)}" ${editable ? '' : 'readonly'}></div>
+            <div style="display:flex;justify-content:space-between;border-top:1px solid var(--border);padding-top:10px;font-size:1.1rem"><span>Total</span><strong id="fTotal">${esc(fmt$(w.total))}</strong></div>
           </div>
         </div>
       </div>
@@ -133,7 +134,7 @@
         ARS.Pages.successWithView({
           title: 'Invoice created',
           message: `Invoice ${inv.id} was generated for ${w.id}.`,
-          href: `/app/invoice-detail.html?id=${inv.id}`,
+          href: `/app/invoice-detail.html?id=${encodeURIComponent(inv.id)}`,
           viewLabel: 'View invoice',
         });
         render();

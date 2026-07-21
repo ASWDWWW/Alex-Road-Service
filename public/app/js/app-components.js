@@ -11,7 +11,7 @@ const NAV_ITEMS = [
   { href: '/app/payments.html',    icon: 'fas fa-credit-card',           label: 'Payments',    badgeKey: null, perm: 'payments.record' },
   { href: '/app/inventory.html',   icon: 'fas fa-boxes',                 label: 'Inventory',   badgeKey: 'inventory', badgeQuery: 'status=attention', perm: null },
   { href: '/app/employees.html',   icon: 'fas fa-id-badge',              label: 'Employees',   badgeKey: null, perm: 'employees.view' },
-  { href: '/app/schedule.html',    icon: 'fas fa-calendar-alt',          label: 'Schedule',    badgeKey: null, perm: 'schedule.view' },
+  { href: '/app/schedule.html',    icon: 'fas fa-calendar-alt',          label: 'Schedule',    badgeKey: 'schedule', perm: 'schedule.view' },
   { href: '/app/messages.html',    icon: 'fas fa-comments',              label: 'Messages',    badgeKey: 'messages', perm: 'messages.view' },
   { href: '/app/reports.html',     icon: 'fas fa-chart-bar',             label: 'Reports',     badgeKey: null, perm: 'reports.view' },
   { href: '/app/settings.html',    icon: 'fas fa-cog',                   label: 'Settings',    badgeKey: null, perm: 'settings.view' },
@@ -25,7 +25,7 @@ function getAppUser() {
 }
 
 function avatarStyle(photoURL) {
-  return photoURL ? ` style="background-image:url('${photoURL}')"` : '';
+  return '';
 }
 
 function navPath(href) {
@@ -63,6 +63,9 @@ function getBadges() {
       .filter((l) => !l.status || l.status === 'New').length;
 
     const messages = ARS.Messaging?.unreadCount?.() || 0;
+    const schedule = ARS.Data?.listNotifications?.()
+      .filter((notification) => notification.entityType === 'schedule' && !notification.read)
+      .length || 0;
 
     return {
       trucks: trucks || null,
@@ -72,6 +75,7 @@ function getBadges() {
       inventory: inventory || null,
       leads: leads || null,
       messages: messages || null,
+      schedule: schedule || null,
     };
   } catch {
     return {};
@@ -116,8 +120,14 @@ function appHref(path) {
   return `${path}${sep}demo=1`;
 }
 
+function safeNavigationHref(path) {
+  const value = String(path || '');
+  return value.startsWith('/') || value.startsWith('#') ? appHref(value) : '#';
+}
+
 function buildSidebar() {
   const user = getAppUser();
+  const esc = escapeProfileText;
   const badges = getBadges();
   const items = NAV_ITEMS.filter((n) => {
     if (!navAllowed(n.href)) return false;
@@ -155,10 +165,10 @@ function buildSidebar() {
   </nav>
   <div class="sidebar__footer">
     <div class="sidebar__user" id="sidebarUserLink" role="link" tabindex="0" style="cursor:pointer">
-      <div class="sidebar__avatar"${avatarStyle(user.photoURL)}>${user.photoURL ? '' : user.initials}</div>
+      <div class="sidebar__avatar"${avatarStyle(user.photoURL)}>${user.photoURL ? '' : esc(user.initials)}</div>
       <div>
-        <div class="sidebar__user-name">${user.name}</div>
-        <div class="sidebar__user-role">${user.role}</div>
+        <div class="sidebar__user-name">${esc(user.name)}</div>
+        <div class="sidebar__user-role">${esc(user.role)}</div>
       </div>
     </div>
     <button class="sidebar__logout" id="logoutBtn">
@@ -171,10 +181,11 @@ function buildSidebar() {
 
 function buildTopbar(title) {
   const user = getAppUser();
+  const esc = escapeProfileText;
   return `
 <div class="topbar">
   <button type="button" class="topbar__burger btn btn--ghost btn--icon" id="sidebarToggle" aria-label="Open menu" aria-expanded="false" aria-controls="appSidebar"><i class="fas fa-bars" aria-hidden="true"></i></button>
-  <div class="topbar__title">${title}</div>
+  <div class="topbar__title">${esc(title)}</div>
   <div class="topbar__search">
     <i class="fas fa-search" aria-hidden="true"></i>
     <input type="search" placeholder="Search anything…" id="globalSearch" autocomplete="off" aria-label="Search customers, trucks, work orders, and more" aria-autocomplete="list" aria-controls="searchResults" role="combobox" aria-expanded="false">
@@ -186,8 +197,8 @@ function buildTopbar(title) {
       <span class="topbar__notif-dot" id="notifDot" aria-hidden="true"></span>
     </button>
     <div class="topbar__user" id="topbarUserLink" role="link" tabindex="0" title="Your profile" style="cursor:pointer">
-      <div class="topbar__user-avatar"${avatarStyle(user.photoURL)}>${user.photoURL ? '' : user.initials}</div>
-      <span class="topbar__user-name">${user.name}</span>
+      <div class="topbar__user-avatar"${avatarStyle(user.photoURL)}>${user.photoURL ? '' : esc(user.initials)}</div>
+      <span class="topbar__user-name">${esc(user.name)}</span>
     </div>
   </div>
 </div>`;
@@ -202,8 +213,12 @@ function showToast(msg, type = 'success') {
     document.body.appendChild(el);
   }
   const icons = { success: 'fa-check-circle', error: 'fa-times-circle', info: 'fa-info-circle', warning: 'fa-exclamation-triangle' };
-  el.className = `toast toast--${type}`;
-  el.innerHTML = `<i class="fas ${icons[type] || icons.success}"></i> ${msg}`;
+  const safeType = Object.hasOwn(icons, type) ? type : 'success';
+  el.className = `toast toast--${safeType}`;
+  el.replaceChildren();
+  const icon = document.createElement('i');
+  icon.className = `fas ${icons[safeType]}`;
+  el.append(icon, document.createTextNode(` ${String(msg ?? '')}`));
   requestAnimationFrame(() => el.classList.add('show'));
   setTimeout(() => el.classList.remove('show'), 3600);
 }
@@ -236,10 +251,16 @@ function ensureProfileModal() {
   });
 }
 
+function escapeProfileText(value) {
+  return String(value ?? '').replace(/[&<>"']/g, (char) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  }[char]));
+}
+
 function scheduleSummaryText(schedule) {
   if (!schedule) return '';
   const days = [['mon', 'Mon'], ['tue', 'Tue'], ['wed', 'Wed'], ['thu', 'Thu'], ['fri', 'Fri'], ['sat', 'Sat'], ['sun', 'Sun']];
-  return days.map(([key, label]) => `${label}: ${schedule[key] || 'Off'}`).join(' · ');
+  return days.map(([key, label]) => `${label}: ${escapeProfileText(schedule[key] || 'Off')}`).join(' · ');
 }
 
 function openProfileModal() {
@@ -251,31 +272,32 @@ function openProfileModal() {
   const profile = employee || authUser;
   const canEditSelf = !!uid && !ARS.isDemoMode?.();
   const schedule = profile.schedule;
+  const esc = escapeProfileText;
 
   const body = document.getElementById('profileModalBody');
   body.innerHTML = `
     <div id="profileAvatarMount"></div>
     <div style="margin:14px 0 16px">
-      <div style="font-weight:700;font-size:1.05rem;color:var(--black)">${user.name}</div>
-      <div style="color:var(--steel);font-size:.85rem">${user.role}${profile.jobTitle ? ' · ' + profile.jobTitle : ''}</div>
+      <div style="font-weight:700;font-size:1.05rem;color:var(--black)">${esc(user.name)}</div>
+      <div style="color:var(--steel);font-size:.85rem">${esc(user.role)}${profile.jobTitle ? ` · ${esc(profile.jobTitle)}` : ''}</div>
     </div>
     <div class="detail-info-grid" style="margin-bottom:16px">
-      <div><span style="color:var(--steel)">Email:</span> ${authUser.email || '—'}</div>
-      <div><span style="color:var(--steel)">Department:</span> ${profile.department || '—'}</div>
-      <div><span style="color:var(--steel)">Hire date:</span> ${profile.hireDate ? ARS.fmtDate(profile.hireDate) : '—'}</div>
-      <div><span style="color:var(--steel)">Status:</span> ${profile.status || 'Active'}</div>
+      <div><span style="color:var(--steel)">Email:</span> ${esc(authUser.email || '—')}</div>
+      <div><span style="color:var(--steel)">Department:</span> ${esc(profile.department || '—')}</div>
+      <div><span style="color:var(--steel)">Hire date:</span> ${esc(profile.hireDate ? ARS.fmtDate(profile.hireDate) : '—')}</div>
+      <div><span style="color:var(--steel)">Status:</span> ${esc(profile.status || 'Active')}</div>
     </div>
     ${schedule ? `
     <div style="margin-bottom:16px">
       <div class="form-label">Weekly schedule</div>
       <div style="color:var(--steel);font-size:.82rem;line-height:1.6">${scheduleSummaryText(schedule)}</div>
-      ${schedule.notes ? `<div style="color:var(--steel);font-size:.8rem;margin-top:4px;font-style:italic">${schedule.notes}</div>` : ''}
+      ${schedule.notes ? `<div style="color:var(--steel);font-size:.8rem;margin-top:4px;font-style:italic">${escapeProfileText(schedule.notes)}</div>` : ''}
     </div>` : ''}
-    <div class="form-row"><label class="form-label">Phone</label><input class="form-input" id="profilePhone" value="${profile.phone || ''}" ${canEditSelf ? '' : 'disabled'}></div>
-    <div class="form-row"><label class="form-label">Address</label><input class="form-input" id="profileAddress" value="${profile.address || ''}" ${canEditSelf ? '' : 'disabled'}></div>
+    <div class="form-row"><label class="form-label">Phone</label><input class="form-input" id="profilePhone" value="${esc(profile.phone || '')}" ${canEditSelf ? '' : 'disabled'}></div>
+    <div class="form-row"><label class="form-label">Address</label><input class="form-input" id="profileAddress" value="${esc(profile.address || '')}" ${canEditSelf ? '' : 'disabled'}></div>
     <div class="form-row-2">
-      <div class="form-row"><label class="form-label">Emergency contact name</label><input class="form-input" id="profileEcName" value="${profile.emergencyContact?.name || ''}" ${canEditSelf ? '' : 'disabled'}></div>
-      <div class="form-row"><label class="form-label">Emergency contact phone</label><input class="form-input" id="profileEcPhone" value="${profile.emergencyContact?.phone || ''}" ${canEditSelf ? '' : 'disabled'}></div>
+      <div class="form-row"><label class="form-label">Emergency contact name</label><input class="form-input" id="profileEcName" value="${esc(profile.emergencyContact?.name || '')}" ${canEditSelf ? '' : 'disabled'}></div>
+      <div class="form-row"><label class="form-label">Emergency contact phone</label><input class="form-input" id="profileEcPhone" value="${esc(profile.emergencyContact?.phone || '')}" ${canEditSelf ? '' : 'disabled'}></div>
     </div>`;
 
   const footer = document.getElementById('profileModalFooter');
@@ -349,7 +371,7 @@ const CHIP_MAP = {
   'On Leave': 'chip--onleave', 'Terminated': 'chip--terminated', 'Archived': 'chip--terminated',
 };
 function chip(status) {
-  return `<span class="chip ${CHIP_MAP[status] || 'chip--open'}">${status}</span>`;
+  return `<span class="chip ${CHIP_MAP[status] || 'chip--open'}">${escapeProfileText(status)}</span>`;
 }
 function fmt$(n) { return ARS.fmtMoney(n); }
 
@@ -415,11 +437,22 @@ function initGlobalSearch() {
     if (!results.length) {
       box.innerHTML = '<div style="padding:12px;font-size:.82rem;color:var(--steel)">No results</div>';
     } else {
-      box.innerHTML = results.map((r, i) => `
-        <a href="${appHref(r.href)}" role="option" data-search-idx="${i}" id="searchOpt${i}" style="display:block;padding:10px 14px;border-bottom:1px solid var(--border);text-decoration:none;color:inherit;font-size:.82rem">
-          <div style="font-weight:700">${r.label}</div>
-          <div style="color:var(--steel);font-size:.75rem">${r.type} · ${r.sub || ''}</div>
-        </a>`).join('');
+      box.replaceChildren(...results.map((r, i) => {
+        const link = document.createElement('a');
+        link.href = safeNavigationHref(r.href);
+        link.setAttribute('role', 'option');
+        link.dataset.searchIdx = String(i);
+        link.id = `searchOpt${i}`;
+        link.style.cssText = 'display:block;padding:10px 14px;border-bottom:1px solid var(--border);text-decoration:none;color:inherit;font-size:.82rem';
+        const label = document.createElement('div');
+        label.style.fontWeight = '700';
+        label.textContent = r.label;
+        const sub = document.createElement('div');
+        sub.style.cssText = 'color:var(--steel);font-size:.75rem';
+        sub.textContent = `${r.type} · ${r.sub || ''}`;
+        link.append(label, sub);
+        return link;
+      }));
     }
     setOpen(true);
     highlight();
@@ -472,7 +505,7 @@ function initGlobalSearch() {
     if (e.key === 'Enter') {
       e.preventDefault();
       const pick = lastResults[activeIdx >= 0 ? activeIdx : 0];
-      if (pick) window.location.href = appHref(pick.href);
+      if (pick) window.location.href = safeNavigationHref(pick.href);
     }
   });
 
@@ -488,16 +521,38 @@ function renderNotificationPanel(panel) {
     panel.innerHTML = '<div class="topbar__notif-empty">No notifications</div>';
     return;
   }
-  panel.innerHTML = `
-    <div class="topbar__notif-header">
-      <strong>${unread ? `${unread} unread` : 'Notifications'}</strong>
-      ${unread ? '<button type="button" class="btn btn--ghost btn--sm" id="markAllNotifsRead">Mark all read</button>' : ''}
-    </div>
-    ${notes.map((n) => `
-    <a href="${appHref(n.href || '#')}" class="notif-item notif-item--${n.type || 'info'}${n.read ? ' notif-item--read' : ''}" data-notif-id="${n.id}" style="display:block;padding:10px 14px;border-bottom:1px solid var(--border);text-decoration:none;color:inherit;font-size:.82rem">
-      <div style="font-weight:${n.read ? '500' : '600'}">${n.message}</div>
-      ${n.entityType ? `<div style="color:var(--steel);font-size:.72rem;margin-top:2px">${n.entityType}${n.read ? ' · read' : ''}</div>` : ''}
-    </a>`).join('')}`;
+  const header = document.createElement('div');
+  header.className = 'topbar__notif-header';
+  const heading = document.createElement('strong');
+  heading.textContent = unread ? `${unread} unread` : 'Notifications';
+  header.appendChild(heading);
+  if (unread) {
+    const markAll = document.createElement('button');
+    markAll.type = 'button';
+    markAll.className = 'btn btn--ghost btn--sm';
+    markAll.id = 'markAllNotifsRead';
+    markAll.textContent = 'Mark all read';
+    header.appendChild(markAll);
+  }
+  const links = notes.map((n) => {
+    const link = document.createElement('a');
+    link.href = safeNavigationHref(n.href || '#');
+    link.className = `notif-item notif-item--${n.type === 'warning' || n.type === 'error' || n.type === 'success' ? n.type : 'info'}${n.read ? ' notif-item--read' : ''}`;
+    link.dataset.notifId = String(n.id ?? '');
+    link.style.cssText = 'display:block;padding:10px 14px;border-bottom:1px solid var(--border);text-decoration:none;color:inherit;font-size:.82rem';
+    const message = document.createElement('div');
+    message.style.fontWeight = n.read ? '500' : '600';
+    message.textContent = n.message;
+    link.appendChild(message);
+    if (n.entityType) {
+      const entity = document.createElement('div');
+      entity.style.cssText = 'color:var(--steel);font-size:.72rem;margin-top:2px';
+      entity.textContent = `${n.entityType}${n.read ? ' · read' : ''}`;
+      link.appendChild(entity);
+    }
+    return link;
+  });
+  panel.replaceChildren(header, ...links);
 }
 
 function updateNotifDot() {
@@ -573,6 +628,7 @@ function initNotifications() {
 
   document.addEventListener('ars:notifications-changed', () => {
     updateNotifDot();
+    updateSidebarBadges();
     if (isOpen()) renderNotificationPanel(panel);
   });
 
@@ -602,6 +658,14 @@ function pageNeedsStripe() {
   return /invoice|payment/i.test(p);
 }
 
+function hasPageLocalCache() {
+  if (!ARS.Store) return false;
+  if (location.pathname.endsWith('/inventory.html')) {
+    return ARS.Store.getCollection('inventory').length > 0;
+  }
+  return ARS.Store.hasLocalCache();
+}
+
 function waitForFirebaseReady(maxMs = 4000) {
   const step = 50;
   let attempts = 0;
@@ -619,11 +683,12 @@ function waitForFirebaseReady(maxMs = 4000) {
 async function loadAppScripts() {
   if (ARS.isDemoMode?.()) {
     ARS.Demo?.getState?.();
+    await loadScript('/app/js/schedule-service.js');
     if (window.ARS?.Data?.init) await ARS.Data.init();
     return { usedCache: true, syncPromise: Promise.resolve() };
   }
 
-  const cacheWarm = !!ARS.Store?.hasLocalCache?.();
+  const cacheWarm = hasPageLocalCache();
   let syncPromise = Promise.resolve();
 
   try {
@@ -659,7 +724,7 @@ async function loadAppScripts() {
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
-  const cacheWarm = !!(ARS.Store?.hasLocalCache?.()) || !!ARS.isDemoMode?.();
+  const cacheWarm = hasPageLocalCache() || !!ARS.isDemoMode?.();
   if (!cacheWarm) {
     document.body.classList.add('app-booting');
     ensureBootOverlay();
@@ -699,6 +764,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   const tbEl = document.getElementById('topbar-placeholder');
   const title = tbEl?.dataset.title || document.title.split('|')[0].trim();
   if (tbEl) tbEl.outerHTML = buildTopbar(title);
+  const user = getAppUser();
+  updateAvatarDOM(user.photoURL, user.initials);
 
   initSidebarNav();
 

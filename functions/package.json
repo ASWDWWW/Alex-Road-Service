@@ -1,15 +1,22 @@
 {
   "name": "alex-road-service-functions",
   "description": "Cloud Functions for Alex Road Service ops platform",
-  "engines": { "node": "22" },
+  "engines": {
+    "node": "22"
+  },
   "main": "index.js",
   "scripts": {
+    "check": "node --check index.js",
+    "provision:initial-admin": "node scripts/provision-initial-admin.js",
     "serve": "firebase emulators:start --only functions",
-    "deploy": "firebase deploy --only functions,firestore:indexes,firestore:rules"
+    "deploy": "firebase deploy --only functions,firestore:indexes,firestore:rules,storage"
   },
   "dependencies": {
-    "firebase-admin": "^13.0.0",
-    "firebase-functions": "^6.3.0",
-    "stripe": "^17.7.0"
+    "firebase-admin": "^14.2.0",
+    "firebase-functions": "^7.3.0",
+    "stripe": "^22.3.2"
+  },
+  "overrides": {
+    "uuid": "11.1.1"
   }
 }

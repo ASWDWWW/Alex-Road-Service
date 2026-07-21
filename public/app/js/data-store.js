@@ -1,11 +1,14 @@
 /* Alex Road Service — Persistence Layer (localStorage + optional Firestore) */
 window.ARS = window.ARS || {};
 
-const PROD_STORE_KEY = 'ars_platform_v1';
+const PROD_STORE_PREFIX = 'ars_platform_v2';
+const LEGACY_SHARED_STORE_KEY = 'ars_platform_v1';
 const listeners = new Set();
 
 function storeKey() {
-  return ARS.isDemoMode?.() ? (ARS.DEMO_STORE_KEY || 'ars_platform_demo_v1') : PROD_STORE_KEY;
+  if (ARS.isDemoMode?.()) return ARS.DEMO_STORE_KEY || 'ars_platform_demo_v1';
+  const uid = ARS.Auth?.getUser?.()?.uid || window.ARSFirebase?.auth?.currentUser?.uid;
+  return uid ? `${PROD_STORE_PREFIX}:${uid}` : null;
 }
 
 function emit() {
@@ -59,7 +62,10 @@ ARS.Store = {
     if (ARS.isDemoMode?.()) return loadDemoState();
 
     try {
-      const raw = localStorage.getItem(storeKey());
+      const key = storeKey();
+      if (!key) return defaultState();
+      localStorage.removeItem(LEGACY_SHARED_STORE_KEY);
+      const raw = localStorage.getItem(key);
       if (!raw) return defaultState();
       return { ...defaultState(), ...JSON.parse(raw) };
     } catch {
@@ -73,8 +79,16 @@ ARS.Store = {
       if (!opts.silent) emit();
       return;
     }
-    localStorage.setItem(storeKey(), JSON.stringify(state));
+    const key = storeKey();
+    if (key) localStorage.setItem(key, JSON.stringify(state));
     if (!opts.silent) emit();
+  },
+
+  clearCurrentUserCache() {
+    if (ARS.isDemoMode?.()) return;
+    const key = storeKey();
+    if (key) localStorage.removeItem(key);
+    localStorage.removeItem(LEGACY_SHARED_STORE_KEY);
   },
 
   subscribe(fn) {

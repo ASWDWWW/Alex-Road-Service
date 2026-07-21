@@ -6,7 +6,7 @@
   <link rel="icon" href="/favicon.ico" sizes="any">
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <title>Schedule | Alex Road Service Ops</title>
-  <link rel="stylesheet" href="/app/css/app.css?v=20260720w">
+  <link rel="stylesheet" href="/app/css/app.css?v=20260721c">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
 </head>
 <body class="app-body">
@@ -19,8 +19,11 @@
         <div class="page-header__title">Schedule</div>
         <div class="page-header__sub" id="scheduleSub">Jobs, meetings, lunch, and time-off</div>
       </div>
-      <div class="page-header__actions" style="display:flex;gap:8px;flex-wrap:wrap">
-        <select class="form-select" id="scheduleEmployeeFilter" style="min-width:200px"></select>
+      <div class="page-header__actions schedule-actions">
+        <label class="schedule-employee-filter">
+          <span>Employee</span>
+          <select class="form-select" id="scheduleEmployeeFilter"></select>
+        </label>
         <button class="btn btn--secondary" id="scheduleTodayBtn"><i class="fas fa-calendar-day"></i> Today</button>
         <button class="btn btn--primary" id="scheduleAddBtn"><i class="fas fa-plus"></i> Add block</button>
       </div>
@@ -28,14 +31,23 @@
 
     <div class="cal-shell app-card">
       <div class="cal-toolbar">
-        <button type="button" class="btn btn--ghost btn--icon" id="calPrev" title="Previous month"><i class="fas fa-chevron-left"></i></button>
-        <div class="cal-toolbar__title" id="calMonthLabel">—</div>
-        <button type="button" class="btn btn--ghost btn--icon" id="calNext" title="Next month"><i class="fas fa-chevron-right"></i></button>
+        <div class="cal-toolbar__navigation">
+          <button type="button" class="btn btn--ghost btn--icon" id="calPrev" title="Previous period" aria-label="Previous period"><i class="fas fa-chevron-left"></i></button>
+          <div class="cal-toolbar__title" id="calRangeLabel">—</div>
+          <button type="button" class="btn btn--ghost btn--icon" id="calNext" title="Next period" aria-label="Next period"><i class="fas fa-chevron-right"></i></button>
+        </div>
+        <div class="cal-view-switch" role="group" aria-label="Calendar view">
+          <button type="button" data-calendar-view="day">Day</button>
+          <button type="button" data-calendar-view="week">Week</button>
+          <button type="button" data-calendar-view="month">Month</button>
+        </div>
       </div>
-      <div class="cal-grid-head">
-        <div>Sun</div><div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div>
+      <div class="cal-legend" aria-label="Calendar legend">
+        <span><i style="--legend:#15803d"></i> Scheduled hours</span>
+        <span><i style="--legend:#171A1A"></i> Work order</span>
+        <span><i style="--legend:#2563eb"></i> Meeting / custom block</span>
       </div>
-      <div class="cal-grid" id="calGrid"></div>
+      <div class="cal-view-host" id="calViewHost"></div>
     </div>
 
     <div class="cal-day-panel app-card" id="calDayPanel" style="margin-top:16px">
@@ -95,14 +107,14 @@
   </div>
 </div>
 
-<script src="/app/js/utils.js?v=20260720w"></script>
-<script src="/app/js/demo-mode.js?v=20260720w"></script>
-<script src="/app/js/data-store.js?v=20260720w"></script>
-<script src="/app/js/auth.js?v=20260720w"></script>
-<script src="/app/js/data-service.js?v=20260720w"></script>
-<script src="/app/js/page-scripts.js?v=20260720w"></script>
-<script src="/app/js/app-components.js?v=20260720w"></script>
-<script>
+<script src="/app/js/utils.js?v=20260721c"></script>
+<script src="/app/js/demo-mode.js?v=20260721c"></script>
+<script src="/app/js/data-store.js?v=20260721c"></script>
+<script src="/app/js/auth.js?v=20260721c"></script>
+<script src="/app/js/data-service.js?v=20260721c"></script>
+<script src="/app/js/page-scripts.js?v=20260721c"></script>
+<script src="/app/js/app-components.js?v=20260721c"></script>
+<script type="application/x-ars-legacy">
   let viewYear, viewMonth, selectedDate = null, editingId = null;
 
   function esc(s) {
@@ -466,5 +478,6 @@
     });
   });
 </script>
+<script src="/app/js/schedule-page.js?v=20260721d"></script>
 </body>
 </html>

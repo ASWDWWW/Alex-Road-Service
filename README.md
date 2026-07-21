@@ -1,6 +1,6 @@
 # Alex Road Service — Website & Operations Platform
 
-Public marketing website and **production-ready internal operations platform** for Alex Road Service: 24/7 emergency roadside repair and commercial truck repair (Keasbey, NJ).
+Public marketing website and internal operations platform for Alex Road Service: 24/7 emergency roadside repair and commercial truck repair (Keasbey, NJ).
 
 ---
 
@@ -74,14 +74,14 @@ cd functions && npm install && cd ..
 firebase deploy
 ```
 
-Deploys: Hosting, Firestore rules, Cloud Functions.
+Deploys: Hosting, Firestore rules/indexes, Storage rules, and Cloud Functions.
 
 ### GitHub Actions
 
-Configure secrets: `FIREBASE_TOKEN`, `FIREBASE_STAGING_PROJECT`, `FIREBASE_PROD_PROJECT`
+Configure secrets: `FIREBASE_TOKEN`, `FIREBASE_PROD_PROJECT`
 
-- Push to `staging` → deploy staging
-- Push to `main` → deploy production (with environment approval)
+- Pull requests to `main` run validation only.
+- Pushes to `main` deploy production after the protected `production` environment approval.
 
 ---
 
@@ -117,9 +117,8 @@ Alex-Road-Service/
 
 ## Before production go-live
 
-- [ ] Replace `YOUR_*` in `firebase-config.js` with real Firebase credentials
-- [ ] Create Firebase Auth users with custom claims (`admin`, `office`, `technician`)
+- [x] Production Firebase config is present
+- [ ] Rotate any previously seeded staff credentials and remove obsolete accounts
 - [ ] Enable Firestore PITR and daily backups
-- [ ] Remove demo credentials from production README
 - [ ] Accountant review of tax settings in Settings page
 - [ ] Complete go-live checklist in `docs/IMPLEMENTATION_PLAN.md` §16

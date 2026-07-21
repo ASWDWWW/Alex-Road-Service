@@ -128,13 +128,14 @@ This plan defines the **full path to a production-grade shop management platform
 └──────────────────────────────────────────────────────────────────┘
 ```
 
-### Environments
+### Runtime environment
 
-| Env | Firebase Project | Purpose |
-|-----|------------------|---------|
-| `dev` | `alex-road-dev` | Local + feature branches |
-| `staging` | `alex-road-staging` | UAT, pre-prod validation |
-| `prod` | `launchpage-alex-roadservice` | Live business |
+| Environment | Firebase Project | Purpose |
+|-------------|------------------|---------|
+| Local emulators | Isolated test project ID | Development, rules tests, and integration checks |
+| Production | `launchpage-alex-roadservice` | Live business |
+
+There is no hosted staging environment. Pull-request CI and local Firebase emulators are the mandatory pre-production gates.
 
 ### Key Technical Decisions
 
@@ -195,7 +196,7 @@ This plan defines the **full path to a production-grade shop management platform
 
 | Phase | Name | Duration | Gate |
 |-------|------|----------|------|
-| 0 | Foundation & DevOps | 1 wk | Firebase projects + staging deploy |
+| 0 | Foundation & DevOps | 1 wk | Emulator validation + production deployment gate |
 | 1 | Auth & RBAC | 1 wk | UAT-AUTH pass |
 | 2 | Data service layer | 1 wk | CRUD smoke tests pass |
 | 3 | Customers | 0.5 wk | UAT-CUST pass |
@@ -208,7 +209,7 @@ This plan defines the **full path to a production-grade shop management platform
 | 10 | Reports & exports | 1 wk | Export files validated |
 | 11 | Cross-cutting (search, notifs) | 1 wk | UAT-XCUT pass |
 | 12 | Public site completion | 0.5 wk | Contact form E2E pass |
-| 13 | Integrations | 1–2 wk | Email + PDF in staging |
+| 13 | Integrations | 1–2 wk | Email + PDF pass emulator and sandbox checks |
 | 14 | Security hardening & launch | 1 wk | Go-live checklist |
 
 **Total:** ~10–12 weeks (1 FTE) · ~6 weeks (2 FTE)
@@ -604,7 +605,7 @@ Each entry: `{ action, entityType, entityId, userId, timestamp, before, after, i
 | A02 Cryptographic Failures | HTTPS only; Firebase defaults |
 | A03 Injection | Parameterized Firestore queries; no eval |
 | A04 Insecure Design | Threat model above |
-| A05 Security Misconfiguration | Separate prod/staging; no debug in prod |
+| A05 Security Misconfiguration | Emulator-only test data; protected production deploy; no debug in prod |
 | A06 Vulnerable Components | `npm audit` on Functions; CDN integrity hashes |
 | A07 Auth Failures | Firebase Auth; session timeout 8h (office), 12h (admin) |
 | A08 Data Integrity | Immutable payments; version fields |
@@ -692,8 +693,8 @@ Each entry: `{ action, entityType, entityId, userId, timestamp, before, after, i
 | Trigger | Tests Run |
 |---------|-----------|
 | Every PR | Unit + rules integration |
-| Merge to `main` | + E2E on staging |
-| Pre-prod deploy | Full UAT script suite |
+| Merge candidate | + local/emulator E2E |
+| Production approval | Full UAT script suite |
 | Post-deploy smoke | E2E-01, E2E-04, E2E-06 on prod (read-only where needed) |
 
 ### 9.7 Definition of Done (Per Phase)
@@ -701,10 +702,10 @@ Each entry: `{ action, entityType, entityId, userId, timestamp, before, after, i
 - [ ] All user stories for phase accepted
 - [ ] Unit tests ≥ 80% coverage on new logic
 - [ ] Rules tests cover all new permissions
-- [ ] E2E paths for phase pass on staging
+- [ ] E2E paths for phase pass locally against emulators
 - [ ] No P0/P1 open bugs
 - [ ] Accessibility spot-check (keyboard + contrast)
-- [ ] Staging UAT sign-off recorded
+- [ ] Pre-release UAT sign-off recorded
 - [ ] Runbook updated if ops behavior changed
 
 ---
@@ -715,11 +716,10 @@ Each entry: `{ action, entityType, entityId, userId, timestamp, before, after, i
 
 ```
 main          ← production releases only
-├── staging   ← pre-prod integration
-└── feature/* ← PRs → staging → main
+└── feature/* ← PRs → validation → main
 ```
 
-- PR required for `staging` and `main`
+- PR required for `main`
 - Squash merge preferred
 - Tag releases: `v1.0.0`, `v1.1.0`
 
@@ -728,9 +728,9 @@ main          ← production releases only
 | Stage | On | Actions |
 |-------|-----|---------|
 | Lint & test | PR | `npm test` (functions), rules tests |
-| Deploy staging | Merge to `staging` | `firebase deploy --project staging` |
-| E2E | Post staging deploy | Playwright against staging URL |
-| Deploy prod | Merge to `main` + tag | Manual approval gate → `firebase deploy --project prod` |
+| Rules/integration | PR | Firebase emulator suite |
+| E2E | PR / release candidate | Browser smoke tests against local emulators |
+| Deploy prod | Merge to `main` + tag | Manual approval gate → production-only deploy |
 
 ### 10.3 Monitoring & Alerting
 
@@ -996,7 +996,7 @@ Required footer content:
 | ID | Risk | Likelihood | Impact | Mitigation |
 |----|------|------------|--------|------------|
 | R1 | Firebase cost overrun | Medium | Medium | Budget alerts; indexes reviewed; pagination |
-| R2 | Data migration errors from mock | Medium | High | Seed script + validation; parallel run on staging |
+| R2 | Data migration errors from mock | Medium | High | Seed script + emulator validation; controlled production migration |
 | R3 | Key person dependency (single dev) | High | High | Document runbook; code review; bus factor plan |
 | R4 | Staff resistance to new system | Medium | High | UAT early; train per role; parallel run 2 weeks |
 | R5 | Incorrect tax/labor rules | Low | High | Accountant review before go-live |
@@ -1027,7 +1027,7 @@ Add 20% buffer. Review at 90 days post-launch.
 
 | Gate | Criteria |
 |------|----------|
-| G0 → G1 | Staging deploy; Auth works; rules deployed |
+| G0 → G1 | Emulator suite passes; Auth works; rules validate |
 | G1 → G2 | All CRUD modules pass unit + integration tests |
 | G2 → G3 | UAT-WO + UAT-FIN signed off |
 | G3 → G4 | Security checklist complete; pen test optional |
@@ -1038,7 +1038,7 @@ Add 20% buffer. Review at 90 days post-launch.
 1. Request documented in GitHub Issue
 2. Impact assessed (data, financial, security)
 3. Owner approves if financial or RBAC impact
-4. Deploy to staging → UAT → prod during maintenance window
+4. Run emulator/E2E suite → UAT approval → deploy production during maintenance window
 5. Rollback plan documented for each release
 
 ---
