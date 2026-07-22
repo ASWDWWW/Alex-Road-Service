@@ -58,6 +58,16 @@ async function initFirebase() {
         provider: new ReCaptchaEnterpriseProvider(FIREBASE_CONFIG.appCheckSiteKey),
         isTokenAutoRefreshEnabled: true,
       });
+      try {
+        const { getToken } = await import(
+          `https://www.gstatic.com/firebasejs/${FB_VERSION}/firebase-app-check.js`
+        );
+        await getToken(appCheck, /* forceRefresh */ false);
+        window.__ARS_APPCHECK_OK = true;
+      } catch (appCheckError) {
+        window.__ARS_APPCHECK_OK = false;
+        console.warn('App Check token failed:', appCheckError?.code || appCheckError?.message || appCheckError);
+      }
     }
     const db = getFirestore(app);
     const auth = getAuth(app);

@@ -91,6 +91,12 @@ ARS.Auth = {
       return this._user;
     }
     const profile = await window.ARSFirebase.getUserProfile?.(firebaseUser.uid);
+    if (!profile) {
+      throw new Error('Staff profile was not found. Contact your administrator.');
+    }
+    if (profile.active === false || ['Archived', 'Terminated'].includes(profile.status)) {
+      throw new Error('This account is inactive. Contact your administrator.');
+    }
     this._user = {
       uid: firebaseUser.uid,
       email: firebaseUser.email,

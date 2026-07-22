@@ -39,8 +39,9 @@ service cloud.firestore {
     }
 
     match /users/{userId} {
-      allow read: if isActiveStaff()
-        && (request.auth.uid == userId || isAdminOrDev());
+      // Own profile must be readable for login/session bootstrap, even when inactive.
+      allow get: if isAuth() && request.auth.uid == userId;
+      allow list: if isActiveStaff() && isAdminOrDev();
       allow create: if isAdminOrDev();
       allow update: if isAdminOrDev()
         || (isActiveStaff()
