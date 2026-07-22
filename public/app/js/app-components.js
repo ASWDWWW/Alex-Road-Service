@@ -192,6 +192,7 @@ function buildTopbar(title) {
     <div id="searchResults" class="topbar__search-results" role="listbox" hidden></div>
   </div>
   <div class="topbar__actions">
+    ${typeof ARS_I18N !== 'undefined' ? ARS_I18N.placeholder('app') : '<div class="lang-switcher-mount" data-lang-switcher="app"></div>'}
     <button type="button" class="topbar__icon-btn" id="notifsBtn" title="Notifications" aria-label="Notifications" aria-expanded="false" aria-haspopup="true" aria-controls="notifPanel">
       <i class="fas fa-bell" aria-hidden="true"></i>
       <span class="topbar__notif-dot" id="notifDot" aria-hidden="true"></span>
@@ -766,6 +767,14 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (tbEl) tbEl.outerHTML = buildTopbar(title);
   const user = getAppUser();
   updateAvatarDOM(user.photoURL, user.initials);
+
+  // Full-site language switcher (shared with public website)
+  try {
+    await loadScript('/js/i18n.js');
+    window.ARS_I18N?.mountAll?.();
+  } catch (e) {
+    console.warn('i18n load failed:', e);
+  }
 
   initSidebarNav();
 

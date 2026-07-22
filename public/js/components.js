@@ -58,9 +58,11 @@ function buildNav() {
     <a href="${SITE.phoneTel}" class="nav__call-mobile btn btn--primary btn--full">
       <i class="fas fa-phone"></i> CALL NOW — ${SITE.phoneEmerg}
     </a>
+    ${typeof ARS_I18N !== 'undefined' ? ARS_I18N.placeholder('site') : '<div class="lang-switcher-mount" data-lang-switcher="site"></div>'}
   </div>
 
   <div class="nav__actions">
+    ${typeof ARS_I18N !== 'undefined' ? ARS_I18N.placeholder('site') : '<div class="lang-switcher-mount" data-lang-switcher="site"></div>'}
     <a href="${SITE.phoneTel}" class="btn btn--primary btn--sm">
       <i class="fas fa-phone"></i> CALL NOW
     </a>
@@ -179,6 +181,16 @@ function buildFooter() {
   document.head.appendChild(s);
 })();
 
+(function loadI18n() {
+  if (document.querySelector('script[data-ars-i18n]')) return;
+  const s = document.createElement('script');
+  s.src = '/js/i18n.js';
+  s.defer = true;
+  s.dataset.arsI18n = '1';
+  s.onload = () => window.ARS_I18N?.mountAll?.();
+  document.head.appendChild(s);
+})();
+
 document.addEventListener('DOMContentLoaded', () => {
   // Inject nav
   document.body.insertAdjacentHTML('afterbegin', buildNav());
@@ -190,4 +202,7 @@ document.addEventListener('DOMContentLoaded', () => {
   } else {
     document.body.insertAdjacentHTML('beforeend', buildFooter());
   }
+
+  // Language switcher mounts after nav exists (i18n may already be loaded)
+  window.ARS_I18N?.mountAll?.();
 });

@@ -231,6 +231,7 @@ The following list consolidates the customer-facing and staff-facing capabilitie
 - Search-friendly page titles, descriptions, business information, and page structure
 - Social-proof and review content with links to external review pages
 - Public website navigation plus a separate staff-login entry
+- **All-language translation** — accessible globe language switcher on the public website and staff ops platform; translates the full interface into 100+ languages (included for every package)
 - New domain assistance, existing-domain connection, and temporary preview address
 
 ### Staff access and daily workspace
@@ -246,6 +247,7 @@ The following list consolidates the customer-facing and staff-facing capabilitie
 - Global search plus module-level search and filters
 - Staff profile and avatar management
 - Responsive navigation for desktop, tablet, and mobile use
+- **Multi-language UI** — same language preference as the public site; staff can run the full ops platform in any supported language
 
 ### Customer and service operations
 
